@@ -463,10 +463,10 @@ const MachineCodeDef OPCODES[] = {
 };
 
 // flag register bit masks
-const U8 REGISTERS_FLAG_ZERO = 0x80;
-const U8 REGISTERS_FLAG_SUBTRACT = 0x40;
-const U8 REGISTERS_FLAG_HALFCARRY = 0x20;
-const U8 REGISTERS_FLAG_CARRY = 0x10;
+const U8 RFLAG_ZERO = 0x80;
+const U8 RFLAG_SUBTRACT = 0x40;
+const U8 RFLAG_HALFCARRY = 0x20;
+const U8 RFLAG_CARRY = 0x10;
 
 struct Registers {
     union {
@@ -577,172 +577,374 @@ T rotr(T value) {
     return (value >> 1) | (value << (sizeof(value)*8 - 1));
 }
 
+#define GB_FLAG_SET(FLAG_BYTE, FLAG_MASK, ON_OFF) \
+    do { \
+        if(ON_OFF){ \
+            FLAG_BYTE |= (FLAG_MASK); \
+        } else { \
+            FLAG_BYTE &= ~(FLAG_MASK); \
+        } \
+    } while(0)
+
+#define GB_FLAG(FLAG_BYTE, FLAG_MASK) \
+    ((FLAG_BYTE & FLAG_MASK) == FLAG_MASK)
+
+inline
+unsigned add_will_carry(U8 left_operand, U8 right_operand) {
+    U16 promoted = (U16)left_operand + (U16)right_operand;
+    return (promoted > 0x00FF);
+}
+
+inline
+unsigned sub_will_borrow(U8 left_operand, U8 right_operand) {
+    return (left_operand < right_operand);
+}
+
+inline
+unsigned add_will_halfcarry(U8 left_operand, U8 right_operand) {
+    U8 half = (left_operand & 0x0F) + (right_operand & 0x0F);
+    return (half > 0x0F);
+}
+
+inline
+unsigned sub_will_halfborrow(U8 left_operand, U8 right_operand) {
+    return ((left_operand & 0x0F) < (right_operand & 0x0F));
+}
+
+inline
+void flag_set_zero(U8* flags, U8 result) {
+    GB_FLAG_SET(*flags, RFLAG_ZERO, (result == 0));
+}
+
 // returns number of cycles used
 U8 emu_apply_next_instruction(Emulator* emu) {
+    //TODO: add this base address to certain jump instructions
+    //const U16 U8_JUMP_ADDR_BASE = 0xFF00;
+    
     Registers* r = &emu->registers;
     U8* instr = (U8*)emu_address(emu, r->pc);
     U8 additional_cycles = 0; //for conditional instructions
-#define DIRECT_U16 (*((U16*)(&instr[1])))
-#define DIRECT_U8 (instr[1])
-#define READ8_HL emu_mem_read<U8>(emu, r->hl)
-
-#define RFLAG(FLAG) ((r->f & FLAG) == FLAG)
-#define RFLAG_SET(FLAG, ON_OFF) \
-    if(ON_OFF){ \
-        r->f |= FLAG; \
-    } else { \
-        r->f &= ~FLAG; \
-    }
-#define RFLAG_ZERO(VALUE) \
-    RFLAG_SET(REGISTERS_FLAG_ZERO, ((VALUE) == 0))
-
-    const U16 ADDR_BASE = 0xFF00;
+    U16 jump_to_addr = 0;
+#   define DIRECT_U16 (*((U16*)(&instr[1])))
+#   define DIRECT_U8 (instr[1])
+#   define READ8_HL emu_mem_read<U8>(emu, r->hl)
 
 //        printf("0x%0.2X\n", instr[0]);
 
-    //TODO: set flags
     switch(instr[0]){
+
         case 0x00: // NOP (- - - -)
             break;
+
         case 0x01: // LD BC,d16 (- - - -)
             r->bc = DIRECT_U16;
             break;
+
         case 0x02:{// LD (BC),A (- - - -)
             emu_mem_write(emu, r->bc, r->a);
             break;}
+
         case 0x03: // INC BC (- - - -)
             r->bc += 1;
             break;
+
+// increments a single 8bit register
+// assumes (Z 0 H -)
+#define INC_R_IMPL(REGISTER) \
+    do { \
+        GB_FLAG_SET(r->f, RFLAG_HALFCARRY, add_will_halfcarry((REGISTER), 1)); \
+        REGISTER += 1; \
+        GB_FLAG_SET(r->f, RFLAG_ZERO, ((REGISTER) == 0)); \
+        GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0); \
+    } while(0)
+
         case 0x04: // INC B (Z 0 H -)
-            RFLAG_SET(REGISTERS_FLAG_HALFCARRY, ((r->b & 0x0F) == 0x0F));
-            r->b += 1;
-            RFLAG_ZERO(r->b);
-            RFLAG_SET(REGISTERS_FLAG_SUBTRACT, 0);
+            INC_R_IMPL(r->b);
             break;
-        case 0x05: // DEC B
-            r->b -= 1;
+
+// decrements a single 8bit register
+// assumes (Z 1 H -)
+#define DEC_R_IMPL(REGISTER) \
+    do { \
+        GB_FLAG_SET(r->f, RFLAG_HALFCARRY, sub_will_halfborrow((REGISTER), 1));\
+        REGISTER -= 1; \
+        GB_FLAG_SET(r->f, RFLAG_ZERO, ((REGISTER) == 0)); \
+        GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 1); \
+    } while(0)
+
+        case 0x05: // DEC B (Z 1 H -)
+            DEC_R_IMPL(r->b);
             break;
-        case 0x06: // LD B,d8
-            r->b = instr[1];
+
+        case 0x06: // LD B,d8 (- - - -)
+            r->b = DIRECT_U8;
             break;
-        case 0x07: // RLCA
-            //TODO: carry flag
-            r->a = rotl(r->a);
-            break;
-        case 0x08:{// LD (a16),SP
-            emu_mem_write(emu, DIRECT_U16, r->sp);
+
+        case 0x07:{// RLCA (0 0 0 C)
+            //TODO: resolve conlflicting specs on how to set zero flag
+            /*
+                Bitwise cycle left.
+                Old high bit (7) becomes the new low bit (0).
+                Old high bit (7) also gets stored in the carry flag.
+              
+                        +---------------------------------+
+                        |                                 |
+                        |                                 v
+                +---+   |   +---+---+---+---+---+---+---+---+
+                | C |<--+---| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+                +---+       +---+---+---+---+---+---+---+---+
+
+             */
+            U8 high_bit = (r->a & 0x80); //remember high bit
+            r->a = (r->a << 1) | (high_bit >> 7);
+            GB_FLAG_SET(r->f, RFLAG_ZERO, 0);
+            GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0);
+            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, 0);
+            GB_FLAG_SET(r->f, RFLAG_CARRY, high_bit); // high bit goes into carry
             break;}
-        case 0x09: // ADD HL,BC
+
+        case 0x08: // LD (a16),SP (- - - -)
+            emu_mem_write(emu, DIRECT_U16, r->sp);
+            break;
+
+        case 0x09: // ADD HL,BC (- 0 H C)
+            GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0);
+            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, add_will_halfcarry(r->hl, r->bc));
+            GB_FLAG_SET(r->f, RFLAG_CARRY, add_will_carry(r->hl, r->bc));
             r->hl += r->bc;
             break;
-        case 0x0A: // LD A,(BC)
+
+        case 0x0A: // LD A,(BC) (- - - -)
             r->a = emu_mem_read<U8>(emu, r->bc);
             break;
-        case 0x0B: // DEC BC
+
+        case 0x0B: // DEC BC (- - - -)
             r->bc -= 1;
             break;
-        case 0x0C: // INC C
-            r->c += 1;
+
+        case 0x0C: // INC C (Z 0 H -)
+            INC_R_IMPL(r->c);
             break;
-        case 0x0D: // DEC C
-            r->c -= 1;
+
+        case 0x0D: // DEC C (Z 1 H -)
+            DEC_R_IMPL(r->c);
             break;
-        case 0x0E: // LD C,d8
+
+        case 0x0E: // LD C,d8 (- - - -)
             r->c = DIRECT_U8;
             break;
-        case 0x0F: // RRCA
-            //TODO: carry flag
-            r->a = rotr(r->a);
-            break;
-        case 0x10: // STOP 0
+
+        case 0x0F:{// RRCA (0 0 0 C)
+            //TODO: resolve conlflicting specs on how to set zero flag
+            /*
+                Bitwise rotate A right.
+                Old low bit (0) becomes the new high bit (7).
+                Old low bit (0) to the carry flag.
+
+                  +-----+---------------------------------+
+                  |     |                                 |
+                  v     |                                 |
+                +---+   |   +---+---+---+---+---+---+---+---+
+                | C |   +-->| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+                +---+       +---+---+---+---+---+---+---+---+
+             */
+            U8 low_bit = (r->a & 0x01);
+            r->a = (r->a >> 1) | (low_bit << 7);
+            GB_FLAG_SET(r->f, RFLAG_ZERO, 0);
+            GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0);
+            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, 0);
+            GB_FLAG_SET(r->f, RFLAG_CARRY, low_bit);
+            break;}
+
+        case 0x10: // STOP 0 (- - - -)
             //TODO: halt CPU and LCD display until button is pressed
             break;
-        case 0x11: // LD DE,d16
+
+        case 0x11: // LD DE,d16 (- - - -)
             r->de = DIRECT_U16;
             break;
-        case 0x12: // LD (DE),A
+
+        case 0x12: // LD (DE),A (- - - -)
             emu_mem_write(emu, r->de, r->a);
             break;
-        case 0x13: // INC DE
+
+        case 0x13: // INC DE (- - - -)
             r->de += 1;
             break;
-        case 0x14: // INC D
-            r->d += 1;
+
+        case 0x14: // INC D (Z 0 H -)
+            INC_R_IMPL(r->d);
             break;
-        case 0x15: // DEC D
-            r->d -= 1;
+
+        case 0x15: // DEC D (Z 1 H -)
+            DEC_R_IMPL(r->d);
             break;
-        case 0x16: // LD D,d8
+
+        case 0x16: // LD D,d8 (- - - -)
             r->d = DIRECT_U8;
             break;
-        case 0x17: // RLA
-            //TODO: carry flag
-            r->a = rotl(r->a);
+
+        case 0x17:{// RLA (0 0 0 C)
+            //TODO: resolve conlflicting specs on how to set zero flag
+            /*
+                Bitwise rotate A left through carry flag.
+                Old high bit (7) becomes the new carry flag.
+                Old carry flag becomes the new low bit (0).
+
+                  +---------------------------------------+
+                  |                                       |
+                  |                                       v
+                +---+       +---+---+---+---+---+---+---+---+
+                | C |<------| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+                +---+       +---+---+---+---+---+---+---+---+
+             */
+            U8 old_carry_low_bit = (GB_FLAG(r->f, RFLAG_CARRY) ? 0x01 : 0x00);
+            U8 old_high_bit = (r->a & 0x80);
+            r->a = (r->a << 1) | old_carry_low_bit;
+            GB_FLAG_SET(r->f, RFLAG_ZERO, 0);
+            GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0);
+            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, 0);
+            GB_FLAG_SET(r->f, RFLAG_CARRY, old_high_bit);
+            break;}
+
+        case 0x18: // JR r8 (- - - -)
+            jump_to_addr = r->pc + (U16)DIRECT_U8;
             break;
-        case 0x18: // JR r8
-            //TODO: does this jump include 1 byte for the currect instruction or not?
-            r->pc += DIRECT_U8;
-            break;
-        case 0x19: // ADD HL,DE
+
+        case 0x19: // ADD HL,DE (- 0 H C)
+            GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0);
+            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, add_will_halfcarry(r->hl, r->de));
+            GB_FLAG_SET(r->f, RFLAG_CARRY, add_will_carry(r->hl, r->de));
             r->hl += r->de;
             break;
-        case 0x1A: // LD A,(DE)
+
+        case 0x1A: // LD A,(DE) (- - - -)
             r->a = emu_mem_read<U8>(emu, r->de);
             break;
-        case 0x1B: // DEC DE
+
+        case 0x1B: // DEC DE (- - - -)
             r->de -= 1;
             break;
-        case 0x1C: // INC E
-            r->e += 1;
+
+        case 0x1C: // INC E (Z 0 H -)
+            INC_R_IMPL(r->e);
             break;
-        case 0x1D: // DEC E
-            r->e -= 1;
+
+        case 0x1D: // DEC E (Z 1 H -)
+            DEC_R_IMPL(r->e);
             break;
-        case 0x1E: // LD E,d8
+
+        case 0x1E: // LD E,d8 (- - - -)
             r->e = DIRECT_U8;
             break;
-        case 0x1F: // RRA
-            //TODO: carry flag
-            r->a = rotr(r->a);
-            break;
-        case 0x20: // JR NZ,r8
-            if(!RFLAG(REGISTERS_FLAG_ZERO)){
+
+        case 0x1F:{// RRA (0 0 0 C)
+            //TODO: resolve conlflicting specs on how to set zero flag
+            /*
+                Bitwise rotate A right through carry flag.
+                Old low bit (0) becomes the new carry flag.
+                Old carry flag becomes the new high bit (7).
+
+                  +---------------------------------------+
+                  |                                       |
+                  v                                       |
+                +---+       +---+---+---+---+---+---+---+---+
+                | C |------>| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+                +---+       +---+---+---+---+---+---+---+---+
+             */
+            U8 old_low_bit = (r->a & 0x01);
+            U8 old_carry = (GB_FLAG(r->f, RFLAG_CARRY) ? 0x80 : 0x00);
+            r->a = (r->a >> 1) | old_carry;
+            GB_FLAG_SET(r->f, RFLAG_ZERO, 0);
+            GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0);
+            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, 0);
+            GB_FLAG_SET(r->f, RFLAG_CARRY, old_low_bit);
+        break;}
+
+        case 0x20: // JR NZ,r8 (- - - -)
+            if(!GB_FLAG(r->f, RFLAG_ZERO)){
                 additional_cycles = 4;
-                //TODO: does this jump include 1 byte for the currect instruction or not?
-                r->pc += DIRECT_U8;
+                jump_to_addr = r->pc + DIRECT_U8;
             }
             break;
-        case 0x21: // LD HL,d16
+
+        case 0x21: // LD HL,d16 (- - - -)
             r->hl = DIRECT_U16;
             break;
-        case 0x22: // LD (HL+),A
+
+        case 0x22: // LD (HL+),A (- - - -)
             emu_mem_write(emu, r->hl, r->a);
             r->hl += 1;
             break;
-        case 0x23: // INC HL
+
+        case 0x23: // INC HL (- - - -)
             r->hl += 1;
             break;
-        case 0x24: // INC H
-            r->h += 1;
+
+        case 0x24: // INC H (Z 0 H -)
+            INC_R_IMPL(r->h);
             break;
-        case 0x25: // DEC H
-            r->h -= 1;
+
+        case 0x25: // DEC H (Z 1 H -)
+            DEC_R_IMPL(r->e);
             break;
-        case 0x26: // LD H,d8
+
+        case 0x26: // LD H,d8 (- - - -)
             r->h = DIRECT_U8;
             break;
-        case 0x27: // DAA
-            //TODO: here
-            break;
-        case 0x28: // JR Z,r8
-            if(RFLAG(REGISTERS_FLAG_ZERO)){
+
+        case 0x27:{// DAA (Z - 0 C)
+            /*
+             When this instruction is executed, the A register is BCD corrected using the contents
+             of the flags. The exact process is the following: if the least significant four bits
+             of A contain a non-BCD digit (i. e. it is greater than 9) or the H flag is set, then
+             $06 is added to the register. Then the four most significant bits are checked. If this
+             more significant digit also happens to be greater than 9 or the C flag is set, then
+             $60 is added.
+             
+             The same rule applies when N=1. The only thing is that you have to subtract
+             the correction when N=1.
+             
+             If the second addition was needed, the C flag is set after execution, 
+             otherwise it is reset.
+             */
+            U8 subtract = GB_FLAG(r->f, RFLAG_SUBTRACT);
+
+            if((r->a & 0x0F) > 0x09 || GB_FLAG(r->f, RFLAG_HALFCARRY)){
+                if(subtract){
+                    r->a -= 0x06;
+                } else {
+                    r->a += 0x06;
+                }
+            }
+
+            if((r->a & 0xF0) > 0x90 || GB_FLAG(r->f, RFLAG_CARRY)){
+                if(subtract){
+                    r->a -= 0x60;
+                } else {
+                    r->a += 0x60;
+                }
+                GB_FLAG_SET(r->f, RFLAG_CARRY, 1);
+            } else {
+                GB_FLAG_SET(r->f, RFLAG_CARRY, 0);
+            }
+
+            GB_FLAG_SET(r->f, RFLAG_ZERO, (r->a == 0));
+            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, 0);
+            break;}
+
+        case 0x28: // JR Z,r8 (- - - -)
+            if(GB_FLAG(r->f, RFLAG_ZERO)){
                 additional_cycles = 4;
-                r->pc += DIRECT_U8;
+                jump_to_addr = r->pc + DIRECT_U8;
             }
             break;
-        case 0x29: // ADD HL,HL
+
+        case 0x29: // ADD HL,HL (- 0 H C)
+            //TODO: flags here
             r->hl += r->hl;
             break;
+
         case 0x2A: // LD A,(HL+)
             r->a = READ8_HL;
             r->hl += 1;
@@ -751,10 +953,10 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             r->hl -= 1;
             break;
         case 0x2C: // INC L
-            r->l += 1;
+            INC_R_IMPL(r->l);
             break;
         case 0x2D: // DEC L
-            r->l -= 1;
+            DEC_R_IMPL(r->l);
             break;
         case 0x2E: // LD L,d8
             r->l = DIRECT_U8;
@@ -763,7 +965,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             r->a = ~(r->a);
             break;
         case 0x30: // JR NC,r8
-            if(!RFLAG(REGISTERS_FLAG_CARRY)){
+            if(!GB_FLAG(r->f, RFLAG_CARRY)){
                 additional_cycles = 4;
                 r->pc += DIRECT_U8;
             }
@@ -788,10 +990,10 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             emu_mem_write(emu, r->hl, DIRECT_U8);
             break;
         case 0x37: // SCF
-            r->f |= REGISTERS_FLAG_CARRY;
+            r->f |= RFLAG_CARRY;
             break;
         case 0x38: // JR C,r8
-            if(RFLAG(REGISTERS_FLAG_CARRY)){
+            if(GB_FLAG(r->f, RFLAG_CARRY)){
                 additional_cycles = 4;
                 r->pc += DIRECT_U8;
             }
@@ -807,16 +1009,16 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             r->sp -= 1;
             break;
         case 0x3C: // INC A
-            r->a += 1;
+            INC_R_IMPL(r->a);
             break;
         case 0x3D: // DEC A
-            r->a -= 1;
+            DEC_R_IMPL(r->a);
             break;
         case 0x3E: // LD A,d8
             r->a = DIRECT_U8;
             break;
         case 0x3F: // CCF
-            r->f ^= REGISTERS_FLAG_CARRY;
+            r->f ^= RFLAG_CARRY;
             break;
         case 0x40: // LD B,B
             // NOP
@@ -1038,7 +1240,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
 #define ADC_A_IMPL(ADD_VALUE) \
     do { \
         r->a += ADD_VALUE; \
-        if(RFLAG(REGISTERS_FLAG_CARRY)){ \
+        if(GB_FLAG(r->f, RFLAG_CARRY)){ \
             r->a += 1; \
         } \
     } while(0)
@@ -1101,7 +1303,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
 #define SBC_A_IMPL(SUB_VALUE) \
     do { \
         r->a -= SUB_VALUE; \
-        if(RFLAG(REGISTERS_FLAG_CARRY)){ \
+        if(GB_FLAG(r->f, RFLAG_CARRY)){ \
             r->a -= 1; \
         } \
     } while(0)
@@ -1257,7 +1459,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
     } while(0)
 
         case 0xC0: // RET NZ
-            if(!RFLAG(REGISTERS_FLAG_ZERO)){
+            if(!GB_FLAG(r->f, RFLAG_ZERO)){
                 RET_IMPL;
             }
             break;
@@ -1276,7 +1478,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0xC7: // RST 00H
             break;
         case 0xC8: // RET Z
-            if(RFLAG(REGISTERS_FLAG_ZERO)){
+            if(GB_FLAG(r->f, RFLAG_ZERO)){
                 RET_IMPL;
             }
             break;
@@ -1296,7 +1498,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0xCF: // RST 08H
             break;
         case 0xD0: // RET NC
-            if(!RFLAG(REGISTERS_FLAG_CARRY)){
+            if(!GB_FLAG(r->f, RFLAG_CARRY)){
                 RET_IMPL;
             }
             break;
@@ -1315,7 +1517,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0xD7: // RST 10H
             break;
         case 0xD8: // RET C
-            if(RFLAG(REGISTERS_FLAG_CARRY)){
+            if(GB_FLAG(r->f, RFLAG_CARRY)){
                 RET_IMPL;
             }
             break;
@@ -1402,13 +1604,18 @@ U8 emu_apply_next_instruction(Emulator* emu) {
     }
 
     const MachineCodeDef* opcode = &OPCODES[*instr];
-    r->pc += opcode->byte_length;
+    if(jump_to_addr == 0){
+        // step to next instruction
+        r->pc += opcode->byte_length;
+    } else {
+        // jump to an arbitrary address
+        r->pc = jump_to_addr;
+    }
     return opcode->cycles + additional_cycles;
 
-#undef DIRECT_U16
-#undef DIRECT_U8
-#undef READ8_HL
-#undef RFLAG
+#   undef DIRECT_U16
+#   undef DIRECT_U8
+#   undef READ8_HL
 }
 
 void emu_step(Emulator* emu) {
@@ -1445,7 +1652,7 @@ int main(int argc, const char * argv[]) {
     printf("Rom is %s\n", title);
 
     emu_init(emu);
-    emu_step(emu);
-    emu_step(emu);
+//    emu_step(emu);
+//    emu_step(emu);
 }
 
