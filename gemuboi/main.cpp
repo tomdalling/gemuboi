@@ -12,6 +12,7 @@
 
 typedef unsigned char U8;
 typedef unsigned short U16;
+typedef unsigned int U32;
 
 U8 NINTENDO_LOGO[48] = {
     0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B,
@@ -612,18 +613,39 @@ unsigned sub_will_halfborrow(U8 left_operand, U8 right_operand) {
 }
 
 inline
-void flag_set_zero(U8* flags, U8 result) {
-    GB_FLAG_SET(*flags, RFLAG_ZERO, (result == 0));
+unsigned u16_add_will_halfcarry(U16 hl, U16 operand) {
+    // for the `ADD HL,?` intruction, halfcarry occurs
+    // for bit 11. 0x07FF is the mask for the lower 11 bits.
+    U16 lower_11s_added = (hl & 0x07FF) + (operand & 0x07FF);
+    return (lower_11s_added > 0x07FF);
+}
+
+inline
+unsigned u16_add_will_carry(U16 hl, U16 operand) {
+    U32 promoted = (U32)hl + (U32)operand;
+    return (promoted > 0x0000FFFF);
+}
+
+U16 emu_stack_pop(Emulator* emu) {
+    U16 retval = emu_mem_read<U16>(emu, emu->registers.sp);
+    emu->registers.sp += 2;
+    return retval;
+}
+
+void emu_stack_push(Emulator* emu, U16 value) {
+    emu->registers.sp -= 2;
+    emu_mem_write(emu, emu->registers.sp, value);
 }
 
 // returns number of cycles used
 U8 emu_apply_next_instruction(Emulator* emu) {
-    //TODO: add this base address to certain jump instructions
-    //const U16 U8_JUMP_ADDR_BASE = 0xFF00;
-    
     Registers* r = &emu->registers;
     U8* instr = (U8*)emu_address(emu, r->pc);
+    const MachineCodeDef* opcode = &OPCODES[*instr];
     U8 additional_cycles = 0; //for conditional instructions
+
+    //TODO: fix this variable
+    //      0x0000 is a valid address to jump to, so it can't be used as a sentinel
     U16 jump_to_addr = 0;
 #   define DIRECT_U16 (*((U16*)(&instr[1])))
 #   define DIRECT_U8 (instr[1])
@@ -707,11 +729,18 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             emu_mem_write(emu, DIRECT_U16, r->sp);
             break;
 
+// assumes (- 0 H C)
+#define ADD_HL_IMPL(OPERAND) \
+    do { \
+        U16 op = OPERAND; \
+        GB_FLAG_SET(r->f, RFLAG_HALFCARRY, u16_add_will_halfcarry(r->hl, op)); \
+        GB_FLAG_SET(r->f, RFLAG_HALFCARRY, u16_add_will_carry(r->hl, op)); \
+        r->hl += op; \
+        GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0); \
+    } while(0)
+
         case 0x09: // ADD HL,BC (- 0 H C)
-            GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0);
-            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, add_will_halfcarry(r->hl, r->bc));
-            GB_FLAG_SET(r->f, RFLAG_CARRY, add_will_carry(r->hl, r->bc));
-            r->hl += r->bc;
+            ADD_HL_IMPL(r->bc);
             break;
 
         case 0x0A: // LD A,(BC) (- - - -)
@@ -812,10 +841,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x19: // ADD HL,DE (- 0 H C)
-            GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0);
-            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, add_will_halfcarry(r->hl, r->de));
-            GB_FLAG_SET(r->f, RFLAG_CARRY, add_will_carry(r->hl, r->de));
-            r->hl += r->de;
+            ADD_HL_IMPL(r->de);
             break;
 
         case 0x1A: // LD A,(DE) (- - - -)
@@ -941,372 +967,426 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x29: // ADD HL,HL (- 0 H C)
-            //TODO: flags here
-            r->hl += r->hl;
+            ADD_HL_IMPL(r->hl);
             break;
 
-        case 0x2A: // LD A,(HL+)
+        case 0x2A: // LD A,(HL+) (- - - -)
             r->a = READ8_HL;
             r->hl += 1;
             break;
-        case 0x2B: // DEC HL
+
+        case 0x2B: // DEC HL (- - - -)
             r->hl -= 1;
             break;
-        case 0x2C: // INC L
+
+        case 0x2C: // INC L (Z 0 H -)
             INC_R_IMPL(r->l);
             break;
-        case 0x2D: // DEC L
+
+        case 0x2D: // DEC L (Z 1 H -)
             DEC_R_IMPL(r->l);
             break;
-        case 0x2E: // LD L,d8
+
+        case 0x2E: // LD L,d8 (- - - -)
             r->l = DIRECT_U8;
             break;
-        case 0x2F: // CPL
+
+        case 0x2F: // CPL (- 1 1 -)
             r->a = ~(r->a);
+            GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 1);
+            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, 1);
             break;
-        case 0x30: // JR NC,r8
+
+        case 0x30: // JR NC,r8 (- - - -)
             if(!GB_FLAG(r->f, RFLAG_CARRY)){
                 additional_cycles = 4;
-                r->pc += DIRECT_U8;
+                jump_to_addr = r->pc + DIRECT_U8;
             }
             break;
-        case 0x31: // LD SP,d16
+
+        case 0x31: // LD SP,d16 (- - - -)
             r->sp = DIRECT_U16;
             break;
-        case 0x32: // LD (HL-),A
+
+        case 0x32: // LD (HL-),A (- - - -)
             emu_mem_write(emu, r->hl, r->a);
             r->hl -= 1;
             break;
-        case 0x33: // INC SP
+
+        case 0x33: // INC SP (- - - -)
             r->sp += 1;
             break;
-        case 0x34: // INC (HL)
-            emu_mem_write(emu, r->hl, READ8_HL + 1);
-            break;
-        case 0x35: // DEC (HL)
-            emu_mem_write(emu, r->hl, READ8_HL - 1);
-            break;
-        case 0x36: // LD (HL),d8
+
+        case 0x34:{// INC (HL) (Z 0 H -)
+            U8 old_value = READ8_HL;
+            U8 new_value = old_value + 1;
+            emu_mem_write(emu, r->hl, new_value);
+            GB_FLAG_SET(r->f, RFLAG_ZERO, (new_value == 0));
+            GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0);
+            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, add_will_halfcarry(old_value, 1));
+            break;}
+
+        case 0x35:{// DEC (HL) (Z 1 H -)
+            U8 old_value = READ8_HL;
+            U8 new_value = old_value - 1;
+            emu_mem_write(emu, r->hl, new_value);
+            GB_FLAG_SET(r->f, RFLAG_ZERO, (new_value == 0));
+            GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 1);
+            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, sub_will_halfborrow(old_value, 1));
+            break;}
+
+        case 0x36: // LD (HL),d8 (- - - -)
             emu_mem_write(emu, r->hl, DIRECT_U8);
             break;
-        case 0x37: // SCF
-            r->f |= RFLAG_CARRY;
+
+        case 0x37: // SCF (- 0 0 1)
+            GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0);
+            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, 0);
+            GB_FLAG_SET(r->f, RFLAG_CARRY, 1);
             break;
-        case 0x38: // JR C,r8
+
+        case 0x38: // JR C,r8 (- - - -)
             if(GB_FLAG(r->f, RFLAG_CARRY)){
                 additional_cycles = 4;
-                r->pc += DIRECT_U8;
+                jump_to_addr = r->pc + DIRECT_U8;
             }
             break;
-        case 0x39: // ADD HL,SP
-            r->hl += r->sp;
+
+        case 0x39: // ADD HL,SP (- 0 H C)
+            ADD_HL_IMPL(r->sp);
             break;
-        case 0x3A: // LD A,(HL-)
+
+        case 0x3A: // LD A,(HL-) (- - - -)
             r->a = READ8_HL;
             r->hl -= 1;
             break;
-        case 0x3B: // DEC SP
+
+        case 0x3B: // DEC SP (- - - -)
             r->sp -= 1;
             break;
-        case 0x3C: // INC A
+
+        case 0x3C: // INC A (Z 0 H -)
             INC_R_IMPL(r->a);
             break;
-        case 0x3D: // DEC A
+
+        case 0x3D: // DEC A (Z 1 H -)
             DEC_R_IMPL(r->a);
             break;
-        case 0x3E: // LD A,d8
+
+        case 0x3E: // LD A,d8 (- - - -)
             r->a = DIRECT_U8;
             break;
-        case 0x3F: // CCF
+
+        case 0x3F: // CCF (- 0 0 C)
+            GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0);
+            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, 0);
             r->f ^= RFLAG_CARRY;
             break;
-        case 0x40: // LD B,B
+
+        case 0x40: // LD B,B (- - - -)
             // NOP
             break;
-        case 0x41: // LD B,C
+        case 0x41: // LD B,C (- - - -)
             r->b = r->c;
             break;
-        case 0x42: // LD B,D
+        case 0x42: // LD B,D (- - - -)
             r->b = r->d;
             break;
-        case 0x43: // LD B,E
+        case 0x43: // LD B,E (- - - -)
             r->b = r->e;
             break;
-        case 0x44: // LD B,H
+        case 0x44: // LD B,H (- - - -)
             r->b = r->h;
             break;
-        case 0x45: // LD B,L
+        case 0x45: // LD B,L (- - - -)
             r->b = r->l;
             break;
-        case 0x46: // LD B,(HL)
+        case 0x46: // LD B,(HL) (- - - -)
             r->b = READ8_HL;
             break;
-        case 0x47: // LD B,A
+        case 0x47: // LD B,A (- - - -)
             r->b = r->a;
             break;
-        case 0x48: // LD C,B
+
+        case 0x48: // LD C,B (- - - -)
             r->c = r->b;
             break;
-        case 0x49: // LD C,C
+        case 0x49: // LD C,C (- - - -)
             // NOP
             break;
-        case 0x4A: // LD C,D
+        case 0x4A: // LD C,D (- - - -)
             r->c = r->d;
             break;
-        case 0x4B: // LD C,E
+        case 0x4B: // LD C,E (- - - -)
             r->c = r->e;
             break;
-        case 0x4C: // LD C,H
+        case 0x4C: // LD C,H (- - - -)
             r->c = r->h;
             break;
-        case 0x4D: // LD C,L
+        case 0x4D: // LD C,L (- - - -)
             r->c = r->l;
             break;
-        case 0x4E: // LD C,(HL)
+        case 0x4E: // LD C,(HL) (- - - -)
             r->c = READ8_HL;
             break;
-        case 0x4F: // LD C,A
+        case 0x4F: // LD C,A (- - - -)
             r->c = r-> a;
             break;
-        case 0x50: // LD D,B
+
+        case 0x50: // LD D,B (- - - -)
             r->d = r->b;
             break;
-        case 0x51: // LD D,C
+        case 0x51: // LD D,C (- - - -)
             r->d = r->c;
             break;
-        case 0x52: // LD D,D
+        case 0x52: // LD D,D (- - - -)
             // NOP
             break;
-        case 0x53: // LD D,E
+        case 0x53: // LD D,E (- - - -)
             r->d = r->e;
             break;
-        case 0x54: // LD D,H
+        case 0x54: // LD D,H (- - - -)
             r->d = r->h;
             break;
-        case 0x55: // LD D,L
+        case 0x55: // LD D,L (- - - -)
             r->d = r->l;
             break;
-        case 0x56: // LD D,(HL)
+        case 0x56: // LD D,(HL) (- - - -)
             r->d = READ8_HL;
             break;
-        case 0x57: // LD D,A
+        case 0x57: // LD D,A (- - - -)
             r->d = r->a;
             break;
-        case 0x58: // LD E,B
+
+        case 0x58: // LD E,B (- - - -)
             r->e = r->b;
             break;
-        case 0x59: // LD E,C
+        case 0x59: // LD E,C (- - - -)
             r->e = r->c;
             break;
-        case 0x5A: // LD E,D
+        case 0x5A: // LD E,D (- - - -)
             r->e = r->d;
             break;
-        case 0x5B: // LD E,E
+        case 0x5B: // LD E,E (- - - -)
             // NOP
             break;
-        case 0x5C: // LD E,H
+        case 0x5C: // LD E,H (- - - -)
             r->e = r->h;
             break;
-        case 0x5D: // LD E,L
+        case 0x5D: // LD E,L (- - - -)
             r->e = r->l;
             break;
-        case 0x5E: // LD E,(HL)
+        case 0x5E: // LD E,(HL) (- - - -)
             r->e = READ8_HL;
             break;
-        case 0x5F: // LD E,A
+        case 0x5F: // LD E,A (- - - -)
             r->e = r->a;
             break;
-        case 0x60: // LD H,B
+
+        case 0x60: // LD H,B (- - - -)
             r->h = r->b;
             break;
-        case 0x61: // LD H,C
+        case 0x61: // LD H,C (- - - -)
             r->h = r->c;
             break;
-        case 0x62: // LD H,D
+        case 0x62: // LD H,D (- - - -)
             r->h = r->d;
             break;
-        case 0x63: // LD H,E
+        case 0x63: // LD H,E (- - - -)
             r->h = r->e;
             break;
-        case 0x64: // LD H,H
+        case 0x64: // LD H,H (- - - -)
             // NOP
             break;
-        case 0x65: // LD H,L
+        case 0x65: // LD H,L (- - - -)
             r->h = r->l;
             break;
-        case 0x66: // LD H,(HL)
+        case 0x66: // LD H,(HL) (- - - -)
             r->h = READ8_HL;
             break;
-        case 0x67: // LD H,A
+        case 0x67: // LD H,A (- - - -)
             r->h = r->a;
             break;
-        case 0x68: // LD L,B
+
+        case 0x68: // LD L,B (- - - -)
             r->l = r->b;
             break;
-        case 0x69: // LD L,C
+        case 0x69: // LD L,C (- - - -)
             r->l = r->c;
             break;
-        case 0x6A: // LD L,D
+        case 0x6A: // LD L,D (- - - -)
             r->l = r->d;
             break;
-        case 0x6B: // LD L,E
+        case 0x6B: // LD L,E (- - - -)
             r->l = r->e;
             break;
-        case 0x6C: // LD L,H
+        case 0x6C: // LD L,H (- - - -)
             r->l = r->h;
             break;
-        case 0x6D: // LD L,L
+        case 0x6D: // LD L,L (- - - -)
             // NOP
             break;
-        case 0x6E: // LD L,(HL)
+        case 0x6E: // LD L,(HL) (- - - -)
             r->l = READ8_HL;
             break;
-        case 0x6F: // LD L,A
+        case 0x6F: // LD L,A (- - - -)
             r->l = r->a;
             break;
-        case 0x70: // LD (HL),B
+
+        case 0x70: // LD (HL),B (- - - -)
             emu_mem_write(emu, r->hl, r->b);
             break;
-        case 0x71: // LD (HL),C
+        case 0x71: // LD (HL),C (- - - -)
             emu_mem_write(emu, r->hl, r->c);
             break;
-        case 0x72: // LD (HL),D
+        case 0x72: // LD (HL),D (- - - -)
             emu_mem_write(emu, r->hl, r->d);
             break;
-        case 0x73: // LD (HL),E
+        case 0x73: // LD (HL),E (- - - -)
             emu_mem_write(emu, r->hl, r->e);
             break;
-        case 0x74: // LD (HL),H
+        case 0x74: // LD (HL),H (- - - -)
             emu_mem_write(emu, r->hl, r->h);
             break;
-        case 0x75: // LD (HL),L
+        case 0x75: // LD (HL),L (- - - -)
             emu_mem_write(emu, r->hl, r->l);
             break;
-        case 0x76: // HALT
+
+        case 0x76: // HALT (- - - -)
             //TODO: here
             break;
-        case 0x77: // LD (HL),A
+
+        case 0x77: // LD (HL),A (- - - -)
             emu_mem_write(emu, r->hl, r->a);
             break;
-        case 0x78: // LD A,B
+        case 0x78: // LD A,B (- - - -)
             r->a = r->b;
             break;
-        case 0x79: // LD A,C
+        case 0x79: // LD A,C (- - - -)
             r->a = r->c;
             break;
-        case 0x7A: // LD A,D
+        case 0x7A: // LD A,D (- - - -)
             r->a = r->d;
             break;
-        case 0x7B: // LD A,E
+        case 0x7B: // LD A,E (- - - -)
             r->a = r->e;
             break;
-        case 0x7C: // LD A,H
+        case 0x7C: // LD A,H (- - - -)
             r->a = r->h;
             break;
-        case 0x7D: // LD A,L
+        case 0x7D: // LD A,L (- - - -)
             r->a = r->l;
             break;
-        case 0x7E: // LD A,(HL)
+        case 0x7E: // LD A,(HL) (- - - -)
             r->a = READ8_HL;
             break;
-        case 0x7F: // LD A,A
+        case 0x7F: // LD A,A (- - - -)
             // NOP
             break;
-        case 0x80: // ADD A,B
-            r->a += r->b;
-            break;
-        case 0x81: // ADD A,C
-            r->a += r->c;
-            break;
-        case 0x82: // ADD A,D
-            r->a += r->d;
-            break;
-        case 0x83: // ADD A,E
-            r->a += r->e;
-            break;
-        case 0x84: // ADD A,H
-            r->a += r->h;
-            break;
-        case 0x85: // ADD A,L
-            r->a += r->l;
-            break;
-        case 0x86: // ADD A,(HL)
-            r->a += READ8_HL;
-            break;
-        case 0x87: // ADD A,A
-            r->a += r->a;
-            break;
 
-#define ADC_A_IMPL(ADD_VALUE) \
+// assumes (Z 0 H C)
+#define ADD_A_IMPL(OPERAND) \
     do { \
-        r->a += ADD_VALUE; \
-        if(GB_FLAG(r->f, RFLAG_CARRY)){ \
-            r->a += 1; \
-        } \
+        U8 op = OPERAND; \
+        GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0); \
+        GB_FLAG_SET(r->f, RFLAG_HALFCARRY, add_will_halfcarry(r->a, op)); \
+        GB_FLAG_SET(r->f, RFLAG_CARRY, add_will_carry(r->a, op)); \
+        r->a += op; \
+        GB_FLAG_SET(r->f, RFLAG_ZERO, (r->a == 0)); \
     } while(0)
 
-        case 0x88: // ADC A,B
+        case 0x80: // ADD A,B (Z 0 H C)
+            ADD_A_IMPL(r->b);
+            break;
+        case 0x81: // ADD A,C (Z 0 H C)
+            ADD_A_IMPL(r->c);
+            break;
+        case 0x82: // ADD A,D (Z 0 H C)
+            ADD_A_IMPL(r->d);
+            break;
+        case 0x83: // ADD A,E (Z 0 H C)
+            ADD_A_IMPL(r->e);
+            break;
+        case 0x84: // ADD A,H (Z 0 H C)
+            ADD_A_IMPL(r->h);
+            break;
+        case 0x85: // ADD A,L (Z 0 H C)
+            ADD_A_IMPL(r->l);
+            break;
+        case 0x86: // ADD A,(HL) (Z 0 H C)
+            ADD_A_IMPL(READ8_HL);
+            break;
+        case 0x87: // ADD A,A (Z 0 H C)
+            ADD_A_IMPL(r->a);
+            break;
+
+//assumes (Z 0 H C)
+#define ADC_A_IMPL(OPERAND) \
+    ADD_A_IMPL((OPERAND) + (GB_FLAG(r->f, RFLAG_CARRY) ? 1 : 0))
+
+        case 0x88: // ADC A,B (Z 0 H C)
             ADC_A_IMPL(r->b);
             break;
-        case 0x89: // ADC A,C
+        case 0x89: // ADC A,C (Z 0 H C)
             ADC_A_IMPL(r->c);
             break;
-        case 0x8A: // ADC A,D
+        case 0x8A: // ADC A,D (Z 0 H C)
             ADC_A_IMPL(r->d);
             break;
-        case 0x8B: // ADC A,E
+        case 0x8B: // ADC A,E (Z 0 H C)
             ADC_A_IMPL(r->e);
             break;
-        case 0x8C: // ADC A,H
+        case 0x8C: // ADC A,H (Z 0 H C)
             ADC_A_IMPL(r->h);
             break;
-        case 0x8D: // ADC A,L
+        case 0x8D: // ADC A,L (Z 0 H C)
             ADC_A_IMPL(r->l);
             break;
-        case 0x8E: // ADC A,(HL)
+        case 0x8E: // ADC A,(HL) (Z 0 H C)
             ADC_A_IMPL(READ8_HL);
             break;
-        case 0x8F: // ADC A,A
+        case 0x8F: // ADC A,A (Z 0 H C)
             ADC_A_IMPL(r->a);
             break;
 
-#define SUB_A_IMPL(SUB_VALUE) \
+//assumes (Z 1 H C)
+#define SUB_A_IMPL(OPERAND) \
     do { \
-        r->a -= SUB_VALUE; \
+        U8 op = OPERAND; \
+        GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 1); \
+        GB_FLAG_SET(r->f, RFLAG_HALFCARRY, sub_will_halfborrow(r->a, op)); \
+        GB_FLAG_SET(r->f, RFLAG_CARRY, sub_will_borrow(r->a, op)); \
+        r->a -= op; \
+        GB_FLAG_SET(r->f, RFLAG_ZERO, (r->a == 0)); \
     } while(0)
 
-        case 0x90: // SUB B
+        case 0x90: // SUB B (Z 1 H C)
             SUB_A_IMPL(r->b);
             break;
-        case 0x91: // SUB C
+        case 0x91: // SUB C (Z 1 H C)
             SUB_A_IMPL(r->c);
             break;
-        case 0x92: // SUB D
+        case 0x92: // SUB D (Z 1 H C)
             SUB_A_IMPL(r->d);
             break;
-        case 0x93: // SUB E
+        case 0x93: // SUB E (Z 1 H C)
             SUB_A_IMPL(r->e);
             break;
-        case 0x94: // SUB H
+        case 0x94: // SUB H (Z 1 H C)
             SUB_A_IMPL(r->h);
             break;
-        case 0x95: // SUB L
+        case 0x95: // SUB L (Z 1 H C)
             SUB_A_IMPL(r->l);
             break;
-        case 0x96: // SUB (HL)
+        case 0x96: // SUB (HL) (Z 1 H C)
             SUB_A_IMPL(READ8_HL);
             break;
-        case 0x97: // SUB A
+        case 0x97: // SUB A (Z 1 H C)
             SUB_A_IMPL(r->a);
             break;
 
-#define SBC_A_IMPL(SUB_VALUE) \
-    do { \
-        r->a -= SUB_VALUE; \
-        if(GB_FLAG(r->f, RFLAG_CARRY)){ \
-            r->a -= 1; \
-        } \
-    } while(0)
+#define SBC_A_IMPL(OPERAND) \
+    SUB_A_IMPL((OPERAND) - (GB_FLAG(r->f, RFLAG_CARRY) ? 1 : 0))
 
         case 0x98: // SBC A,B
             SBC_A_IMPL(r->b);
@@ -1333,283 +1413,480 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             SBC_A_IMPL(r->a);
             break;
 
-#define AND_A_IMPL(OTHER_VALUE) \
+//assumes (Z 0 1 0)
+#define AND_A_IMPL(OPERAND) \
     do { \
-        r->a = (r->a && OTHER_VALUE); \
+        r->a &= (OPERAND); \
+        GB_FLAG_SET(r->f, RFLAG_ZERO, (r->a == 0)); \
+        GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0); \
+        GB_FLAG_SET(r->f, RFLAG_HALFCARRY, 1); \
+        GB_FLAG_SET(r->f, RFLAG_CARRY, 0); \
     } while(0)
 
-        case 0xA0: // AND B
+        case 0xA0: // AND B (Z 0 1 0)
             AND_A_IMPL(r->b);
             break;
-        case 0xA1: // AND C
+        case 0xA1: // AND C (Z 0 1 0)
             AND_A_IMPL(r->c);
             break;
-        case 0xA2: // AND D
+        case 0xA2: // AND D (Z 0 1 0)
             AND_A_IMPL(r->d);
             break;
-        case 0xA3: // AND E
+        case 0xA3: // AND E (Z 0 1 0)
             AND_A_IMPL(r->e);
             break;
-        case 0xA4: // AND H
+        case 0xA4: // AND H (Z 0 1 0)
             AND_A_IMPL(r->h);
             break;
-        case 0xA5: // AND L
+        case 0xA5: // AND L (Z 0 1 0)
             AND_A_IMPL(r->l);
             break;
-        case 0xA6: // AND (HL)
+        case 0xA6: // AND (HL) (Z 0 1 0)
             AND_A_IMPL(READ8_HL);
             break;
-        case 0xA7: // AND A
+        case 0xA7: // AND A (Z 0 1 0)
             AND_A_IMPL(r->a);
             break;
 
-#define XOR_A_IMPL(OTHER_VALUE) \
+//assumes (Z 0 0 0)
+#define XOR_A_IMPL(OPERAND) \
     do { \
-        r->a = (r->a ^ OTHER_VALUE); \
+        r->a ^= (OPERAND); \
+        GB_FLAG_SET(r->f, RFLAG_ZERO, (r->a == 0)); \
+        GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0); \
+        GB_FLAG_SET(r->f, RFLAG_HALFCARRY, 0); \
+        GB_FLAG_SET(r->f, RFLAG_CARRY, 0); \
     } while(0)
 
-        case 0xA8: // XOR B
+        case 0xA8: // XOR B (Z 0 0 0)
             XOR_A_IMPL(r->b);
             break;
-        case 0xA9: // XOR C
+        case 0xA9: // XOR C (Z 0 0 0)
             XOR_A_IMPL(r->c);
             break;
-        case 0xAA: // XOR D
+        case 0xAA: // XOR D (Z 0 0 0)
             XOR_A_IMPL(r->d);
             break;
-        case 0xAB: // XOR E
+        case 0xAB: // XOR E (Z 0 0 0)
             XOR_A_IMPL(r->e);
             break;
-        case 0xAC: // XOR H
+        case 0xAC: // XOR H (Z 0 0 0)
             XOR_A_IMPL(r->h);
             break;
-        case 0xAD: // XOR L
+        case 0xAD: // XOR L (Z 0 0 0)
             XOR_A_IMPL(r->l);
             break;
-        case 0xAE: // XOR (HL)
+        case 0xAE: // XOR (HL) (Z 0 0 0)
             XOR_A_IMPL(READ8_HL);
             break;
-        case 0xAF: // XOR A
+        case 0xAF: // XOR A (Z 0 0 0)
             XOR_A_IMPL(r->a);
             break;
 
-#define OR_A_IMPL(OTHER_VALUE) \
+//assumes (Z 0 0 0)
+#define OR_A_IMPL(OPERAND) \
     do { \
-        r->a = (r->a || OTHER_VALUE); \
+        r->a |= (OPERAND); \
+        GB_FLAG_SET(r->f, RFLAG_ZERO, (r->a == 0)); \
+        GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0); \
+        GB_FLAG_SET(r->f, RFLAG_HALFCARRY, 0); \
+        GB_FLAG_SET(r->f, RFLAG_CARRY, 0); \
     } while(0)
 
-        case 0xB0: // OR B
+        case 0xB0: // OR B (Z 0 0 0)
             OR_A_IMPL(r->b);
             break;
-        case 0xB1: // OR C
+        case 0xB1: // OR C (Z 0 0 0)
             OR_A_IMPL(r->c);
             break;
-        case 0xB2: // OR D
+        case 0xB2: // OR D (Z 0 0 0)
             OR_A_IMPL(r->d);
             break;
-        case 0xB3: // OR E
+        case 0xB3: // OR E (Z 0 0 0)
             OR_A_IMPL(r->e);
             break;
-        case 0xB4: // OR H
+        case 0xB4: // OR H (Z 0 0 0)
             OR_A_IMPL(r->h);
             break;
-        case 0xB5: // OR L
+        case 0xB5: // OR L (Z 0 0 0)
             OR_A_IMPL(r->l);
             break;
-        case 0xB6: // OR (HL)
+        case 0xB6: // OR (HL) (Z 0 0 0)
             OR_A_IMPL(READ8_HL);
             break;
-        case 0xB7: // OR A
+        case 0xB7: // OR A (Z 0 0 0)
             OR_A_IMPL(r->a);
             break;
 
-//TODO: implement this
-#define CP_A_IMPL(OTHER_VALUE) \
+/*
+ Compare A with n. This is basically an A - n subtraction instruction
+ but the results are thrown away.
+ 
+ assumes (Z 1 H C)
+*/
+#define CP_A_IMPL(OPERAND) \
     do { \
+        U8 op = (OPERAND); \
+        GB_FLAG_SET(r->f, RFLAG_ZERO, ((r->a - op) == 0)); \
+        GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 1); \
+        GB_FLAG_SET(r->f, RFLAG_HALFCARRY, sub_will_halfborrow(r->a, op)); \
+        GB_FLAG_SET(r->f, RFLAG_CARRY, sub_will_borrow(r->a, op)); \
     } while(0)
 
-        case 0xB8: // CP B
+        case 0xB8: // CP B (Z 1 H C)
             CP_A_IMPL(r->b);
             break;
-        case 0xB9: // CP C
+        case 0xB9: // CP C (Z 1 H C)
             CP_A_IMPL(r->c);
             break;
-        case 0xBA: // CP D
+        case 0xBA: // CP D (Z 1 H C)
             CP_A_IMPL(r->d);
             break;
-        case 0xBB: // CP E
+        case 0xBB: // CP E (Z 1 H C)
             CP_A_IMPL(r->e);
             break;
-        case 0xBC: // CP H
+        case 0xBC: // CP H (Z 1 H C)
             CP_A_IMPL(r->h);
             break;
-        case 0xBD: // CP L
+        case 0xBD: // CP L (Z 1 H C)
             CP_A_IMPL(r->l);
             break;
-        case 0xBE: // CP (HL)
+        case 0xBE: // CP (HL) (Z 1 H C)
             CP_A_IMPL(READ8_HL);
             break;
-        case 0xBF: // CP A
+        case 0xBF: // CP A (Z 1 H C)
             CP_A_IMPL(r->a);
             break;
 
 //TODO: implement this
+//Pop two bytes from stack & jump to that address.
 #define RET_IMPL \
     do { \
+        jump_to_addr = emu_stack_pop(emu); \
     } while(0)
 
-        case 0xC0: // RET NZ
+        case 0xC0: // RET NZ (- - - -)
             if(!GB_FLAG(r->f, RFLAG_ZERO)){
+                additional_cycles += 12;
                 RET_IMPL;
             }
             break;
-        case 0xC1: // POP BC
+
+        case 0xC1: // POP BC (- - - -)
+            r->bc = emu_stack_pop(emu);
             break;
-        case 0xC2: // JP NZ,a16
+
+        case 0xC2: // JP NZ,a16 (- - - -)
+            if(!GB_FLAG(r->f, RFLAG_ZERO)){
+                additional_cycles = 4;
+                jump_to_addr = DIRECT_U16;
+            }
             break;
-        case 0xC3: // JP a16
+
+        case 0xC3: // JP a16 (- - - -)
+            jump_to_addr = DIRECT_U16;
             break;
-        case 0xC4: // CALL NZ,a16
+
+#define CALL_IMPL(ADDRESS) \
+    do { \
+        emu_stack_push(emu, r->pc + opcode->byte_length); \
+        jump_to_addr = (ADDRESS); \
+    } while(0)
+
+
+#define CONDITIONAL_CALL_IMPL(COND, ADDRESS) \
+    do {\
+        if(COND){ \
+            additional_cycles = 12; \
+            CALL_IMPL(ADDRESS); \
+        } \
+    } while(0)
+
+
+        case 0xC4: // CALL NZ,a16 (- - - -)
+            CONDITIONAL_CALL_IMPL(!GB_FLAG(r->f, RFLAG_ZERO), DIRECT_U16);
             break;
-        case 0xC5: // PUSH BC
+
+        case 0xC5: // PUSH BC (- - - -)
+            emu_stack_push(emu, r->bc);
             break;
-        case 0xC6: // ADD A,d8
+
+        case 0xC6: // ADD A,d8 (Z 0 H C)
+            ADD_A_IMPL(DIRECT_U8);
             break;
-        case 0xC7: // RST 00H
+
+        case 0xC7: // RST 00H (- - - -)
+            emu_stack_push(emu, r->pc);
+            jump_to_addr = 0x0000;
             break;
-        case 0xC8: // RET Z
+
+        case 0xC8: // RET Z (- - - -)
             if(GB_FLAG(r->f, RFLAG_ZERO)){
+                additional_cycles = 12;
                 RET_IMPL;
             }
             break;
-        case 0xC9: // RET
+
+        case 0xC9: // RET (- - - -)
             RET_IMPL;
             break;
-        case 0xCA: // JP Z,a16
+
+        case 0xCA: // JP Z,a16 (- - - -)
+            if(GB_FLAG(r->f, RFLAG_ZERO)){
+                additional_cycles = 4;
+                jump_to_addr = DIRECT_U16;
+            }
             break;
+
         case 0xCB: // PREFIX CB
+            //TODO: implement the other 256 opcodes with the CB prefix
             break;
-        case 0xCC: // CALL Z,a16
+
+        case 0xCC: // CALL Z,a16 (- - - -)
+            CONDITIONAL_CALL_IMPL(GB_FLAG(r->f, RFLAG_ZERO), DIRECT_U16);
             break;
-        case 0xCD: // CALL a16
+
+        case 0xCD: // CALL a16 (- - - -)
+            CALL_IMPL(DIRECT_U16);
             break;
-        case 0xCE: // ADC A,d8
+
+        case 0xCE: // ADC A,d8 (Z 0 H C)
+            ADC_A_IMPL(DIRECT_U8);
             break;
-        case 0xCF: // RST 08H
+
+        case 0xCF: // RST 08H (- - - -)
+            emu_stack_push(emu, r->pc);
+            jump_to_addr = 0x0008;
             break;
-        case 0xD0: // RET NC
+
+        case 0xD0: // RET NC (- - - -)
             if(!GB_FLAG(r->f, RFLAG_CARRY)){
+                additional_cycles = 12;
                 RET_IMPL;
             }
             break;
-        case 0xD1: // POP DE
+
+        case 0xD1: // POP DE (- - - -)
+            r->de = emu_stack_pop(emu);
             break;
-        case 0xD2: // JP NC,a16
+
+        case 0xD2: // JP NC,a16 (- - - -)
+            if(!GB_FLAG(r->f, RFLAG_CARRY)){
+                additional_cycles = 4;
+                jump_to_addr = DIRECT_U16;
+            }
             break;
+
         case 0xD3: // INVALID_INSTRUCTION
             break;
-        case 0xD4: // CALL NC,a16
+
+        case 0xD4: // CALL NC,a16 (- - - -)
+            CONDITIONAL_CALL_IMPL(!GB_FLAG(r->f, RFLAG_CARRY), DIRECT_U16);
             break;
-        case 0xD5: // PUSH DE
+
+        case 0xD5: // PUSH DE (- - - -)
+            emu_stack_push(emu, r->de);
             break;
-        case 0xD6: // SUB d8
+
+        case 0xD6: // SUB d8 (Z 1 H C)
+            SUB_A_IMPL(DIRECT_U8);
             break;
-        case 0xD7: // RST 10H
+
+        case 0xD7: // RST 10H (- - - -)
+            emu_stack_push(emu, r->pc);
+            jump_to_addr = 0x0010;
             break;
-        case 0xD8: // RET C
+
+        case 0xD8: // RET C (- - - -)
             if(GB_FLAG(r->f, RFLAG_CARRY)){
+                additional_cycles = 12;
                 RET_IMPL;
             }
             break;
-        case 0xD9: // RETI
+
+        case 0xD9: // RETI (- - - -)
             RET_IMPL;
             //TODO: enable interrupts here
             break;
-        case 0xDA: // JP C,a16
+
+        case 0xDA: // JP C,a16 (- - - -)
+            if(GB_FLAG(r->f, RFLAG_CARRY)){
+                additional_cycles = 4;
+                jump_to_addr = DIRECT_U16;
+            }
             break;
+
         case 0xDB: // INVALID_INSTRUCTION
             break;
-        case 0xDC: // CALL C,a16
+
+        case 0xDC: // CALL C,a16 (- - - -)
+            CONDITIONAL_CALL_IMPL(GB_FLAG(r->f, RFLAG_CARRY), DIRECT_U16);
             break;
+
         case 0xDD: // INVALID_INSTRUCTION
             break;
-        case 0xDE: // SBC A,d8
+
+        case 0xDE: // SBC A,d8 (Z 1 H C)
+            SBC_A_IMPL(DIRECT_U8);
             break;
-        case 0xDF: // RST 18H
+
+        case 0xDF: // RST 18H (- - - -)
+            emu_stack_push(emu, r->pc);
+            jump_to_addr = 0x0018;
             break;
-        case 0xE0: // LDH (a8),A
+
+        case 0xE0: // LDH (a8),A (- - - -)
+            emu_mem_write(emu, 0xFF00 + (U16)DIRECT_U8, r->a);
             break;
-        case 0xE1: // POP HL
+
+        case 0xE1: // POP HL (- - - -)
+            r->hl = emu_stack_pop(emu);
             break;
-        case 0xE2: // LD (C),A
+
+        case 0xE2: // LD (C),A (- - - -)
+            emu_mem_write(emu, 0xFF00 + (U16)r->c, r->a);
             break;
+
         case 0xE3: // INVALID_INSTRUCTION
             break;
         case 0xE4: // INVALID_INSTRUCTION
             break;
-        case 0xE5: // PUSH HL
+
+        case 0xE5: // PUSH HL (- - - -)
+            emu_stack_push(emu, r->hl);
             break;
-        case 0xE6: // AND d8
+
+        case 0xE6: // AND d8 (Z 0 1 0)
+            AND_A_IMPL(DIRECT_U8);
             break;
-        case 0xE7: // RST 20H
+
+        case 0xE7: // RST 20H (- - - -)
+            emu_stack_push(emu, r->pc);
+            jump_to_addr = 0x0020;
             break;
-        case 0xE8: // ADD SP,r8
+
+        case 0xE8:{// ADD SP,r8 (0 0 H C)
+            U16 operand = DIRECT_U8;
+            GB_FLAG_SET(r->f, RFLAG_ZERO, 0);
+            GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0);
+            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, u16_add_will_halfcarry(r->sp, operand));
+            GB_FLAG_SET(r->f, RFLAG_CARRY, u16_add_will_carry(r->sp, operand));
+            r->sp += operand;
+            break;}
+
+        case 0xE9: // JP (HL) (- - - -)
+            jump_to_addr = READ8_HL;
             break;
-        case 0xE9: // JP (HL)
+
+        case 0xEA: // LD (a16),A (- - - -)
+            emu_mem_write(emu, DIRECT_U16, r->a);
             break;
-        case 0xEA: // LD (a16),A
-            break;
+
         case 0xEB: // INVALID_INSTRUCTION
             break;
         case 0xEC: // INVALID_INSTRUCTION
             break;
         case 0xED: // INVALID_INSTRUCTION
             break;
-        case 0xEE: // XOR d8
+
+        case 0xEE: // XOR d8 (Z 0 0 0)
+            XOR_A_IMPL(DIRECT_U8);
             break;
-        case 0xEF: // RST 28H
+
+        case 0xEF: // RST 28H (- - - -)
+            emu_stack_push(emu, r->pc);
+            jump_to_addr = 0x0028;
             break;
-        case 0xF0: // LDH A,(a8)
+
+        case 0xF0: // LDH A,(a8) (- - - -)
+            r->a = emu_mem_read<U8>(emu, 0xFF00 + (U16)DIRECT_U8);
             break;
-        case 0xF1: // POP AF
+
+        case 0xF1: // POP AF (Z N H C)
+            // all flags set by virtue of setting r->f
+            r->af = emu_stack_pop(emu);
             break;
+
         case 0xF2: // LD A,(C)
+            r->a = emu_mem_read<U8>(emu, 0xFF00 + (U16)r->c);
             break;
-        case 0xF3: // DI
+
+        case 0xF3: // DI (- - - -)
+            /*
+             TODO: here
+             
+             This instruction disables interrupts but not immediately. 
+             Interrupts are disabled after instruction after DI 
+             is executed.
+             */
             break;
+
         case 0xF4: // INVALID_INSTRUCTION
             break;
-        case 0xF5: // PUSH AF
+
+        case 0xF5: // PUSH AF (- - - -)
+            emu_stack_push(emu, r->af);
             break;
-        case 0xF6: // OR d8
+
+        case 0xF6: // OR d8 (Z 0 0 0)
+            OR_A_IMPL(DIRECT_U8);
             break;
-        case 0xF7: // RST 30H
+
+        case 0xF7: // RST 30H (- - - -)
+            emu_stack_push(emu, r->pc);
+            jump_to_addr = 0x0030;
             break;
-        case 0xF8: // LD HL,SP+r8
+
+        case 0xF8:{// LD HL,SP+r8 (0 0 H C)
+            U16 relative_address = DIRECT_U8;
+            GB_FLAG_SET(r->f, RFLAG_ZERO, 0);
+            GB_FLAG_SET(r->f, RFLAG_SUBTRACT, 0);
+            //TODO: wtf are these carry flags supposed to be?
+            GB_FLAG_SET(r->f, RFLAG_HALFCARRY, u16_add_will_halfcarry(r->sp, relative_address));
+            GB_FLAG_SET(r->f, RFLAG_CARRY, u16_add_will_carry(r->sp, relative_address));
+            r->hl = r->sp + relative_address;
+            break;}
+
+        case 0xF9: // LD SP,HL (- - - -)
+            r->sp = r->hl;
             break;
-        case 0xF9: // LD SP,HL
+
+        case 0xFA: // LD A,(a16) (- - - -)
+            r->a = emu_mem_read<U8>(emu, DIRECT_U16);
             break;
-        case 0xFA: // LD A,(a16)
-            break;
+
         case 0xFB: // EI
+            /*
+             TODO: here
+             
+             Enable interrupts. This intruction enables interrupts
+             but not immediately. Interrupts are enabled after instruction after EI
+             is executed.
+             */
             break;
+
         case 0xFC: // INVALID_INSTRUCTION
             break;
         case 0xFD: // INVALID_INSTRUCTION
             break;
-        case 0xFE: // CP d8
+
+        case 0xFE: // CP d8 (Z 1 H C)
+            CP_A_IMPL(DIRECT_U8);
             break;
+
         case 0xFF: // RST 38H
+            emu_stack_push(emu, r->pc);
+            jump_to_addr = 0x0038;
             break;
     }
 
-    const MachineCodeDef* opcode = &OPCODES[*instr];
-    if(jump_to_addr == 0){
-        // step to next instruction
-        r->pc += opcode->byte_length;
-    } else {
+    //TODO: fix this - 0 is a valid address to jump to
+    if(jump_to_addr > 0){
         // jump to an arbitrary address
         r->pc = jump_to_addr;
+    } else {
+        // step to next instruction
+        r->pc += opcode->byte_length;
     }
     return opcode->cycles + additional_cycles;
 
