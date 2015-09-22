@@ -23,6 +23,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		E212FDC71BB0E397007E74AF /* cart.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = cart.hpp; sourceTree = "<group>"; };
+		E212FDC81BB0E40C007E74AF /* types.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = types.hpp; sourceTree = "<group>"; };
+		E212FDC91BB0E9F8007E74AF /* cpu.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = cpu.hpp; sourceTree = "<group>"; };
 		E2D69FFC1BAAAD7700B71FC2 /* gemuboi */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = gemuboi; sourceTree = BUILT_PRODUCTS_DIR; };
 		E2D69FFF1BAAAD7700B71FC2 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -57,6 +60,9 @@
 		E2D69FFE1BAAAD7700B71FC2 /* gemuboi */ = {
 			isa = PBXGroup;
 			children = (
+				E212FDC81BB0E40C007E74AF /* types.hpp */,
+				E212FDC71BB0E397007E74AF /* cart.hpp */,
+				E212FDC91BB0E9F8007E74AF /* cpu.hpp */,
 				E2D69FFF1BAAAD7700B71FC2 /* main.cpp */,
 			);
 			path = gemuboi;
@@ -234,6 +240,7 @@
 				E2D6A0031BAAAD7700B71FC2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
