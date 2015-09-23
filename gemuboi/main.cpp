@@ -101,64 +101,63 @@ struct Emulator {
      - halt instruction
      - interrupts enabled/disabled
      */
+
+    void* mem_address(U16 address) {
+        /*
+         $FFFF	        Interrupt Enable Flag
+         $FF80-$FFFE	Zero Page - 127 bytes
+         $FF00-$FF7F	Hardware I/O Registers
+         $FEA0-$FEFF	Unusable Memory
+         $FE00-$FE9F	OAM - Object Attribute Memory
+         $E000-$FDFF	Echo RAM - Reserved, Do Not Use
+         $D000-$DFFF	Internal RAM - Bank 1-7 (switchable - CGB only)
+         $C000-$CFFF	Internal RAM - Bank 0 (fixed)
+         $A000-$BFFF	Cartridge RAM (If Available)
+         $9C00-$9FFF	BG Map Data 2
+         $9800-$9BFF	BG Map Data 1
+         $8000-$97FF	Character RAM
+         $4000-$7FFF	Cartridge ROM - Switchable Banks 1-xx
+         $0150-$3FFF	Cartridge ROM - Bank 0 (fixed)
+         $0100-$014F	Cartridge Header Area
+         $0000-$00FF	Restart and Interrupt Vectors
+         */
+
+        // if bootstrap rom is enabled, then 0x0000-0x00FF is read
+        // from the bootstrap rom instead of the cartridge.
+        if(address < BootstrapRomSize && bootstrap_rom_enabled()){
+            return &BootstrapRom[address];
+        }
+
+        if(address < 0x4000){
+            //TODO: implement bank switching
+            return &(cart.data[address]);
+        } else {
+            //TODO: check/implement these addresses properly
+            return &(memory[address]);
+        }
+    }
+
+    template<typename T>
+    T mem_read(U16 address) {
+        T* addr = (T*)mem_address(address);
+        return *addr;
+    }
+
+    template<typename T>
+    void mem_write(U16 address, T value) {
+        T* addr = (T*)mem_address(address);
+        *addr = value;
+    }
+
+    BOOL32 bootstrap_rom_enabled() {
+        return (mem_read<U8>(BootstrapRomFlagAddress) == BootstrapRomFlag_Enabled);
+    }
+
 };
-
-void* emu_address(Emulator* emu, U16 address);
-
-template<typename T>
-T emu_mem_read(Emulator* emu, U16 address) {
-    T* addr = (T*)emu_address(emu, address);
-    return *addr;
-}
-
-template<typename T>
-void emu_mem_write(Emulator* emu, U16 address, T value) {
-    T* addr = (T*)emu_address(emu, address);
-    *addr = value;
-}
-
-BOOL32 emu_bootstrap_rom_enabled(Emulator* emu) {
-    return (emu_mem_read<U8>(emu, BootstrapRomFlagAddress) == BootstrapRomFlag_Enabled);
-}
-
-void* emu_address(Emulator* emu, U16 address) {
-    /*
-     $FFFF	        Interrupt Enable Flag
-     $FF80-$FFFE	Zero Page - 127 bytes
-     $FF00-$FF7F	Hardware I/O Registers
-     $FEA0-$FEFF	Unusable Memory
-     $FE00-$FE9F	OAM - Object Attribute Memory
-     $E000-$FDFF	Echo RAM - Reserved, Do Not Use
-     $D000-$DFFF	Internal RAM - Bank 1-7 (switchable - CGB only)
-     $C000-$CFFF	Internal RAM - Bank 0 (fixed)
-     $A000-$BFFF	Cartridge RAM (If Available)
-     $9C00-$9FFF	BG Map Data 2
-     $9800-$9BFF	BG Map Data 1
-     $8000-$97FF	Character RAM
-     $4000-$7FFF	Cartridge ROM - Switchable Banks 1-xx
-     $0150-$3FFF	Cartridge ROM - Bank 0 (fixed)
-     $0100-$014F	Cartridge Header Area
-     $0000-$00FF	Restart and Interrupt Vectors
-     */
-
-    // if bootstrap rom is enabled, then 0x0000-0x00FF is read
-    // from the bootstrap rom instead of the cartridge.
-    if(address < BootstrapRomSize && emu_bootstrap_rom_enabled(emu)){
-        return &BootstrapRom[address];
-    }
-
-    if(address < 0x4000){
-        //TODO: implement bank switching
-        return &(emu->cart.data[address]);
-    } else {
-        //TODO: check/implement these addresses properly
-        return &(emu->memory[address]);
-    }
-}
 
 void emu_init(Emulator* emu) {
     //Enabled the bootstrap rom
-    emu_mem_write(emu, BootstrapRomFlagAddress, BootstrapRomFlag_Enabled);
+    emu->mem_write(BootstrapRomFlagAddress, BootstrapRomFlag_Enabled);
 
     //PC register is zero, which is where the bootstrap rom begins
     memset(&emu->registers, 0, sizeof(emu->registers));
@@ -363,14 +362,14 @@ void rl(U8* in_out_value, CPU::Registers* registers) {
 
 
 U16 emu_stack_pop(Emulator* emu) {
-    U16 retval = emu_mem_read<U16>(emu, emu->registers.sp);
+    U16 retval = emu->mem_read<U16>(emu->registers.sp);
     emu->registers.sp += 2;
     return retval;
 }
 
 void emu_stack_push(Emulator* emu, U16 value) {
     emu->registers.sp -= 2;
-    emu_mem_write(emu, emu->registers.sp, value);
+    emu->mem_write(emu->registers.sp, value);
 }
 
 U8 emu_standard_operand_read(Emulator* emu, U8 opcode) {
@@ -384,7 +383,7 @@ U8 emu_standard_operand_read(Emulator* emu, U8 opcode) {
         case 0x03: case 0x0B: return r->e;
         case 0x04: case 0x0C: return r->h;
         case 0x05: case 0x0D: return r->l;
-        case 0x06: case 0x0E: return emu_mem_read<U8>(emu, r->hl);
+        case 0x06: case 0x0E: return emu->mem_read<U8>(r->hl);
         case 0x07: case 0x0F: return r->a;
         default:
             assert(0); //should never get here
@@ -403,7 +402,7 @@ void emu_standard_operand_write(Emulator* emu, U8 opcode, U8 value) {
         case 0x03: case 0x0B: r->e = value; break;
         case 0x04: case 0x0C: r->h = value; break;
         case 0x05: case 0x0D: r->l = value; break;
-        case 0x06: case 0x0E: return emu_mem_write(emu, r->hl, value); break;
+        case 0x06: case 0x0E: return emu->mem_write(r->hl, value); break;
         case 0x07: case 0x0F: r->a = value; break;
         default:
             assert(0); //should never get here
@@ -810,10 +809,10 @@ void debug_print_instruction(U8* instr, U16 pc) {
 // returns number of cycles used
 U8 emu_apply_next_instruction(Emulator* emu) {
     CPU::Registers* r = &emu->registers;
-    U8* instr = (U8*)emu_address(emu, r->pc);
+    U8* instr = (U8*)emu->mem_address(r->pc);
     const CPU::OpcodeDesc* opcode = &CPU::Opcodes[*instr];
     U8 additional_cycles = 0; //for conditional instructions
-    
+
     /*
      Step to next instruction.
      
@@ -827,7 +826,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
 #   define DIRECT_U16 (*((U16*)(&instr[1])))
 #   define DIRECT_U8 (instr[1])
 #   define DIRECT_S8 ((S8)(instr[1]))
-#   define READ_HL emu_mem_read<U8>(emu, r->hl)
+#   define READ_HL emu->mem_read<U8>(r->hl)
 
     switch(instr[0]){
 
@@ -839,7 +838,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x02:{// LD (BC),A (- - - -)
-            emu_mem_write(emu, r->bc, r->a);
+            emu->mem_write(r->bc, r->a);
             break;}
 
         case 0x03: // INC BC (- - - -)
@@ -867,7 +866,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;}
 
         case 0x08: // LD (a16),SP (- - - -)
-            emu_mem_write(emu, DIRECT_U16, r->sp);
+            emu->mem_write(DIRECT_U16, r->sp);
             break;
 
 // assumes (- 0 H C)
@@ -885,7 +884,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x0A: // LD A,(BC) (- - - -)
-            r->a = emu_mem_read<U8>(emu, r->bc);
+            r->a = emu->mem_read<U8>(r->bc);
             break;
 
         case 0x0B: // DEC BC (- - - -)
@@ -921,7 +920,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x12: // LD (DE),A (- - - -)
-            emu_mem_write(emu, r->de, r->a);
+            emu->mem_write(r->de, r->a);
             break;
 
         case 0x13: // INC DE (- - - -)
@@ -958,7 +957,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x1A: // LD A,(DE) (- - - -)
-            r->a = emu_mem_read<U8>(emu, r->de);
+            r->a = emu->mem_read<U8>(r->de);
             break;
 
         case 0x1B: // DEC DE (- - - -)
@@ -997,7 +996,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x22: // LD (HL+),A (- - - -)
-            emu_mem_write(emu, r->hl, r->a);
+            emu->mem_write(r->hl, r->a);
             r->hl += 1;
             break;
 
@@ -1108,7 +1107,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x32: // LD (HL-),A (- - - -)
-            emu_mem_write(emu, r->hl, r->a);
+            emu->mem_write(r->hl, r->a);
             r->hl -= 1;
             break;
 
@@ -1117,15 +1116,15 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x34: // INC (HL) (Z 0 H -)
-            inc_u8_impl((U8*)emu_address(emu, r->hl), r);
+            inc_u8_impl((U8*)emu->mem_address(r->hl), r);
             break;
 
         case 0x35: // DEC (HL) (Z 1 H -)
-            dec_u8_impl((U8*)emu_address(emu, r->hl), r);
+            dec_u8_impl((U8*)emu->mem_address(r->hl), r);
             break;
 
         case 0x36: // LD (HL),d8 (- - - -)
-            emu_mem_write(emu, r->hl, DIRECT_U8);
+            emu->mem_write(r->hl, DIRECT_U8);
             break;
 
         case 0x37: // SCF (- 0 0 1)
@@ -1246,7 +1245,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x75: // LD (HL),L (- - - -)
         //   0x76 is the HALT opcode
         case 0x77: // LD (HL),A (- - - -)
-            emu_mem_write(emu, r->hl, emu_standard_operand_read(emu, *instr));
+            emu->mem_write(r->hl, emu_standard_operand_read(emu, *instr));
             break;
 
         case 0x76: // HALT (- - - -)
@@ -1527,7 +1526,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xE0: // LDH (a8),A (- - - -)
-            emu_mem_write(emu, 0xFF00 + (U16)DIRECT_U8, r->a);
+            emu->mem_write(0xFF00 + (U16)DIRECT_U8, r->a);
             break;
 
         case 0xE1: // POP HL (- - - -)
@@ -1535,7 +1534,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xE2: // LD (C),A (- - - -)
-            emu_mem_write(emu, 0xFF00 + (U16)r->c, r->a);
+            emu->mem_write(0xFF00 + (U16)r->c, r->a);
             break;
 
         case 0xE3: // INVALID_INSTRUCTION
@@ -1570,7 +1569,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xEA: // LD (a16),A (- - - -)
-            emu_mem_write(emu, DIRECT_U16, r->a);
+            emu->mem_write(DIRECT_U16, r->a);
             break;
 
         case 0xEB: // INVALID_INSTRUCTION
@@ -1590,7 +1589,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xF0: // LDH A,(a8) (- - - -)
-            r->a = emu_mem_read<U8>(emu, 0xFF00 + (U16)DIRECT_U8);
+            r->a = emu->mem_read<U8>(0xFF00 + (U16)DIRECT_U8);
             break;
 
         case 0xF1: // POP AF (Z N H C)
@@ -1599,7 +1598,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xF2: // LD A,(C)
-            r->a = emu_mem_read<U8>(emu, 0xFF00 + (U16)r->c);
+            r->a = emu->mem_read<U8>(0xFF00 + (U16)r->c);
             break;
 
         case 0xF3: // DI (- - - -)
@@ -1643,7 +1642,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xFA: // LD A,(a16) (- - - -)
-            r->a = emu_mem_read<U8>(emu, DIRECT_U16);
+            r->a = emu->mem_read<U8>(DIRECT_U16);
             break;
 
         case 0xFB: // EI
