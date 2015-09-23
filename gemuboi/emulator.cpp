@@ -689,6 +689,8 @@ U8 emu_apply_next_instruction(Emulator* emu) {
 
     U8 additional_cycles = 0; //for conditional instructions
 
+    debug_print_instruction(instr, r->pc);
+    
     /*
      Step to next instruction.
 
@@ -696,8 +698,6 @@ U8 emu_apply_next_instruction(Emulator* emu) {
      that PC is the address of the _next_ instruction.
      */
     r->pc += opcode_description.byte_length;
-
-    debug_print_instruction(instr, r->pc);
 
     switch(instr[0]){
 

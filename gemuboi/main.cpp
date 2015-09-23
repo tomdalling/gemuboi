@@ -61,7 +61,7 @@ int main(int argc, const char * argv[]) {
     test(emu);
 
     for(;;){
-        if(emu->registers.pc == 0x0027){
+        if(emu->registers.pc == 0x0055){
             printf("BREAK\n");
         }
         emulator_step(emu);
