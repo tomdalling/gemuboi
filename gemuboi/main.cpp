@@ -278,6 +278,14 @@ void dec_u8_impl(U8* in_out_value, CPU::Registers* r){
     r->set_subtract_flag(1);
 }
 
+// (- 0 H C)
+void add_hl_impl(U16 operand, CPU::Registers* r){
+    r->set_subtract_flag(0);
+    r->set_halfcarry_flag(u16_add_will_halfcarry(r->hl, operand));
+    r->set_halfcarry_flag(u16_add_will_carry(r->hl, operand));
+    r->hl += operand;
+}
+
 inline
 void rlc(U8* in_out_value, CPU::Registers* registers) {
     /*
@@ -777,7 +785,7 @@ void emu_cb_instruction(Emulator* emu, U8 cb_instr) {
     emu_standard_operand_write(emu, cb_instr, operand);
 }
 
-void debug_print_instruction(U8* instr, U16 pc) {
+void debug_print_instruction(const U8* instr, U16 pc) {
     // instruction address
     printf("%0.4X: ", pc);
 
@@ -808,9 +816,15 @@ void debug_print_instruction(U8* instr, U16 pc) {
 
 // returns number of cycles used
 U8 emu_apply_next_instruction(Emulator* emu) {
-    CPU::Registers* r = &emu->registers;
-    U8* instr = (U8*)emu->mem_address(r->pc);
-    const CPU::OpcodeDesc* opcode = &CPU::Opcodes[*instr];
+    CPU::Registers* const r = &emu->registers;
+
+    const U8* instr = (U8*)emu->mem_address(r->pc);
+    const U8 opcode = *instr;
+    const U8 direct_u8 = instr[1];
+    const S8 direct_s8 = (S8)instr[1];
+    const U16 direct_u16 = *(U16*)&instr[1];
+    const CPU::OpcodeDesc& opcode_description = CPU::Opcodes[opcode];
+
     U8 additional_cycles = 0; //for conditional instructions
 
     /*
@@ -819,14 +833,9 @@ U8 emu_apply_next_instruction(Emulator* emu) {
      NB: This _must_ happen before the instruction is actually executed. All instructions assume
          that PC is the address of the _next_ instruction.
      */
-    r->pc += opcode->byte_length;
+    r->pc += opcode_description.byte_length;
 
     debug_print_instruction(instr, r->pc);
-
-#   define DIRECT_U16 (*((U16*)(&instr[1])))
-#   define DIRECT_U8 (instr[1])
-#   define DIRECT_S8 ((S8)(instr[1]))
-#   define READ_HL emu->mem_read<U8>(r->hl)
 
     switch(instr[0]){
 
@@ -834,7 +843,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x01: // LD BC,d16 (- - - -)
-            r->bc = DIRECT_U16;
+            r->bc = direct_u16;
             break;
 
         case 0x02:{// LD (BC),A (- - - -)
@@ -854,7 +863,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x06: // LD B,d8 (- - - -)
-            r->b = DIRECT_U8;
+            r->b = direct_u8;
             break;
 
         case 0x07:{// RLCA (0 0 0 C)
@@ -866,21 +875,11 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;}
 
         case 0x08: // LD (a16),SP (- - - -)
-            emu->mem_write(DIRECT_U16, r->sp);
+            emu->mem_write(direct_u16, r->sp);
             break;
 
-// assumes (- 0 H C)
-#define ADD_HL_IMPL(OPERAND) \
-    do { \
-        U16 op = OPERAND; \
-        r->set_halfcarry_flag(u16_add_will_halfcarry(r->hl, op)); \
-        r->set_halfcarry_flag(u16_add_will_carry(r->hl, op)); \
-        r->hl += op; \
-        r->set_subtract_flag(0); \
-    } while(0)
-
         case 0x09: // ADD HL,BC (- 0 H C)
-            ADD_HL_IMPL(r->bc);
+            add_hl_impl(r->bc, r);
             break;
 
         case 0x0A: // LD A,(BC) (- - - -)
@@ -900,7 +899,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x0E: // LD C,d8 (- - - -)
-            r->c = DIRECT_U8;
+            r->c = direct_u8;
             break;
 
         case 0x0F:{// RRCA (0 0 0 C)
@@ -916,7 +915,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x11: // LD DE,d16 (- - - -)
-            r->de = DIRECT_U16;
+            r->de = direct_u16;
             break;
 
         case 0x12: // LD (DE),A (- - - -)
@@ -936,7 +935,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x16: // LD D,d8 (- - - -)
-            r->d = DIRECT_U8;
+            r->d = direct_u8;
             break;
 
         case 0x17:{// RLA (0 0 0 C)
@@ -949,11 +948,11 @@ U8 emu_apply_next_instruction(Emulator* emu) {
 
         case 0x18: // JR r8 (- - - -)
             //TODO: check all the jumps (and maybe other opcodes) to see which should be _signed_ offsets
-            r->pc += DIRECT_S8;
+            r->pc += direct_s8;
             break;
 
         case 0x19: // ADD HL,DE (- 0 H C)
-            ADD_HL_IMPL(r->de);
+            add_hl_impl(r->de, r);
             break;
 
         case 0x1A: // LD A,(DE) (- - - -)
@@ -973,7 +972,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x1E: // LD E,d8 (- - - -)
-            r->e = DIRECT_U8;
+            r->e = direct_u8;
             break;
 
         case 0x1F: // RRA (0 0 0 C)
@@ -987,12 +986,12 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x20: // JR NZ,r8 (- - - -)
             if(!r->zero_flag()){
                 additional_cycles = 4;
-                r->pc += DIRECT_S8;
+                r->pc += direct_s8;
             }
             break;
 
         case 0x21: // LD HL,d16 (- - - -)
-            r->hl = DIRECT_U16;
+            r->hl = direct_u16;
             break;
 
         case 0x22: // LD (HL+),A (- - - -)
@@ -1013,7 +1012,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x26: // LD H,d8 (- - - -)
-            r->h = DIRECT_U8;
+            r->h = direct_u8;
             break;
 
         case 0x27:{// DAA (Z - 0 C)
@@ -1060,16 +1059,16 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x28: // JR Z,r8 (- - - -)
             if(r->zero_flag()){
                 additional_cycles = 4;
-                r->pc += DIRECT_S8;
+                r->pc += direct_s8;
             }
             break;
 
         case 0x29: // ADD HL,HL (- 0 H C)
-            ADD_HL_IMPL(r->hl);
+            add_hl_impl(r->hl, r);
             break;
 
         case 0x2A: // LD A,(HL+) (- - - -)
-            r->a = READ_HL;
+            r->a = emu->mem_read<U8>(r->hl);
             r->hl += 1;
             break;
 
@@ -1086,7 +1085,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x2E: // LD L,d8 (- - - -)
-            r->l = DIRECT_U8;
+            r->l = direct_u8;
             break;
 
         case 0x2F: // CPL (- 1 1 -)
@@ -1098,12 +1097,12 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x30: // JR NC,r8 (- - - -)
             if(!r->carry_flag()){
                 additional_cycles = 4;
-                r->pc += DIRECT_S8;
+                r->pc += direct_s8;
             }
             break;
 
         case 0x31: // LD SP,d16 (- - - -)
-            r->sp = DIRECT_U16;
+            r->sp = direct_u16;
             break;
 
         case 0x32: // LD (HL-),A (- - - -)
@@ -1124,7 +1123,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x36: // LD (HL),d8 (- - - -)
-            emu->mem_write(r->hl, DIRECT_U8);
+            emu->mem_write(r->hl, direct_u8);
             break;
 
         case 0x37: // SCF (- 0 0 1)
@@ -1136,16 +1135,16 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x38: // JR C,r8 (- - - -)
             if(r->carry_flag()){
                 additional_cycles = 4;
-                r->pc += DIRECT_S8;
+                r->pc += direct_s8;
             }
             break;
 
         case 0x39: // ADD HL,SP (- 0 H C)
-            ADD_HL_IMPL(r->sp);
+            add_hl_impl(r->sp, r);
             break;
 
         case 0x3A: // LD A,(HL-) (- - - -)
-            r->a = READ_HL;
+            r->a = emu->mem_read<U8>(r->hl);
             r->hl -= 1;
             break;
 
@@ -1162,7 +1161,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x3E: // LD A,d8 (- - - -)
-            r->a = DIRECT_U8;
+            r->a = direct_u8;
             break;
 
         case 0x3F: // CCF (- 0 0 C)
@@ -1179,7 +1178,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x45: // LD B,L (- - - -)
         case 0x46: // LD B,(HL) (- - - -)
         case 0x47: // LD B,A (- - - -)
-            r->b = emu_standard_operand_read(emu, *instr);
+            r->b = emu_standard_operand_read(emu, opcode);
             break;
 
         case 0x48: // LD C,B (- - - -)
@@ -1190,7 +1189,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x4D: // LD C,L (- - - -)
         case 0x4E: // LD C,(HL) (- - - -)
         case 0x4F: // LD C,A (- - - -)
-            r->c = emu_standard_operand_read(emu, *instr);
+            r->c = emu_standard_operand_read(emu, opcode);
             break;
 
         case 0x50: // LD D,B (- - - -)
@@ -1201,7 +1200,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x55: // LD D,L (- - - -)
         case 0x56: // LD D,(HL) (- - - -)
         case 0x57: // LD D,A (- - - -)
-            r->d = emu_standard_operand_read(emu, *instr);
+            r->d = emu_standard_operand_read(emu, opcode);
             break;
 
         case 0x58: // LD E,B (- - - -)
@@ -1212,7 +1211,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x5D: // LD E,L (- - - -)
         case 0x5E: // LD E,(HL) (- - - -)
         case 0x5F: // LD E,A (- - - -)
-            r->e = emu_standard_operand_read(emu, *instr);
+            r->e = emu_standard_operand_read(emu, opcode);
             break;
 
         case 0x60: // LD H,B (- - - -)
@@ -1223,7 +1222,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x65: // LD H,L (- - - -)
         case 0x66: // LD H,(HL) (- - - -)
         case 0x67: // LD H,A (- - - -)
-            r->h = emu_standard_operand_read(emu, *instr);
+            r->h = emu_standard_operand_read(emu, opcode);
             break;
 
         case 0x68: // LD L,B (- - - -)
@@ -1234,7 +1233,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x6D: // LD L,L (- - - -)
         case 0x6E: // LD L,(HL) (- - - -)
         case 0x6F: // LD L,A (- - - -)
-            r->l = emu_standard_operand_read(emu, *instr);
+            r->l = emu_standard_operand_read(emu, opcode);
             break;
 
         case 0x70: // LD (HL),B (- - - -)
@@ -1245,7 +1244,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x75: // LD (HL),L (- - - -)
         //   0x76 is the HALT opcode
         case 0x77: // LD (HL),A (- - - -)
-            emu->mem_write(r->hl, emu_standard_operand_read(emu, *instr));
+            emu->mem_write(r->hl, emu_standard_operand_read(emu, opcode));
             break;
 
         case 0x76: // HALT (- - - -)
@@ -1260,7 +1259,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x7D: // LD A,L (- - - -)
         case 0x7E: // LD A,(HL) (- - - -)
         case 0x7F: // LD A,A (- - - -)
-            r->a = emu_standard_operand_read(emu, *instr);
+            r->a = emu_standard_operand_read(emu, opcode);
             break;
 
         case 0x80: // ADD A,B (Z 0 H C)
@@ -1280,7 +1279,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x8D: // ADC A,L (Z 0 H C)
         case 0x8E: // ADC A,(HL) (Z 0 H C)
         case 0x8F:{// ADC A,A (Z 0 H C)
-            add_a_impl(emu_standard_operand_read(emu, *instr), (*instr >= 0x88), r);
+            add_a_impl(emu_standard_operand_read(emu, opcode), (opcode >= 0x88), r);
             break;}
 
         case 0x90: // SUB B (Z 1 H C)
@@ -1300,7 +1299,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x9D: // SBC A,L (Z 1 H C)
         case 0x9E: // SBC A,(HL) (Z 1 H C)
         case 0x9F: // SBC A,A (Z 1 H C)
-            sub_a_impl(emu_standard_operand_read(emu, *instr), (*instr >= 0x98), r);
+            sub_a_impl(emu_standard_operand_read(emu, opcode), (opcode >= 0x98), r);
             break;
 
         case 0xA0: // AND B (Z 0 1 0)
@@ -1311,7 +1310,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0xA5: // AND L (Z 0 1 0)
         case 0xA6: // AND (HL) (Z 0 1 0)
         case 0xA7: // AND A (Z 0 1 0)
-            and_a_impl(emu_standard_operand_read(emu, *instr), r);
+            and_a_impl(emu_standard_operand_read(emu, opcode), r);
             break;
 
         case 0xA8: // XOR B (Z 0 0 0)
@@ -1322,7 +1321,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0xAD: // XOR L (Z 0 0 0)
         case 0xAE: // XOR (HL) (Z 0 0 0)
         case 0xAF: // XOR A (Z 0 0 0)
-            xor_a_impl(emu_standard_operand_read(emu, *instr), r);
+            xor_a_impl(emu_standard_operand_read(emu, opcode), r);
             break;
 
         case 0xB0: // OR B (Z 0 0 0)
@@ -1333,7 +1332,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0xB5: // OR L (Z 0 0 0)
         case 0xB6: // OR (HL) (Z 0 0 0)
         case 0xB7: // OR A (Z 0 0 0)
-            or_a_impl(emu_standard_operand_read(emu, *instr), r);
+            or_a_impl(emu_standard_operand_read(emu, opcode), r);
             break;
 
         case 0xB8: // CP B (Z 1 H C)
@@ -1344,7 +1343,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0xBD: // CP L (Z 1 H C)
         case 0xBE: // CP (HL) (Z 1 H C)
         case 0xBF: // CP A (Z 1 H C)
-            cp_a_impl(emu_standard_operand_read(emu, *instr), r);
+            cp_a_impl(emu_standard_operand_read(emu, opcode), r);
             break;
 
 //Pop two bytes from stack & jump to that address.
@@ -1367,12 +1366,12 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0xC2: // JP NZ,a16 (- - - -)
             if(!r->zero_flag()){
                 additional_cycles = 4;
-                r->pc = DIRECT_U16;
+                r->pc = direct_u16;
             }
             break;
 
         case 0xC3: // JP a16 (- - - -)
-            r->pc = DIRECT_U16;
+            r->pc = direct_u16;
             break;
 
 #define CALL_IMPL(ADDRESS) \
@@ -1392,7 +1391,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
 
 
         case 0xC4: // CALL NZ,a16 (- - - -)
-            CONDITIONAL_CALL_IMPL(!r->zero_flag(), DIRECT_U16);
+            CONDITIONAL_CALL_IMPL(!r->zero_flag(), direct_u16);
             break;
 
         case 0xC5: // PUSH BC (- - - -)
@@ -1400,7 +1399,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xC6: // ADD A,d8 (Z 0 H C)
-            add_a_impl(DIRECT_U8, False, r);
+            add_a_impl(direct_u8, False, r);
             break;
 
         case 0xC7: // RST 00H (- - - -)
@@ -1422,26 +1421,26 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0xCA: // JP Z,a16 (- - - -)
             if(r->zero_flag()){
                 additional_cycles = 4;
-                r->pc = DIRECT_U16;
+                r->pc = direct_u16;
             }
             break;
 
         case 0xCB:{// PREFIX CB
-            U8 cb_instr = DIRECT_U8;
-            emu_cb_instruction(emu, cb_instr);
-            additional_cycles = CPU::CBPrefixedOpcodes[cb_instr].cycles;
+            U8 cb_opcode = direct_u8;
+            emu_cb_instruction(emu, cb_opcode);
+            additional_cycles = CPU::CBPrefixedOpcodes[cb_opcode].cycles;
             break;}
 
         case 0xCC: // CALL Z,a16 (- - - -)
-            CONDITIONAL_CALL_IMPL(r->zero_flag(), DIRECT_U16);
+            CONDITIONAL_CALL_IMPL(r->zero_flag(), direct_u16);
             break;
 
         case 0xCD: // CALL a16 (- - - -)
-            CALL_IMPL(DIRECT_U16);
+            CALL_IMPL(direct_u16);
             break;
 
         case 0xCE: // ADC A,d8 (Z 0 H C)
-            add_a_impl(DIRECT_U8, True, r);
+            add_a_impl(direct_u8, True, r);
             break;
 
         case 0xCF: // RST 08H (- - - -)
@@ -1463,7 +1462,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0xD2: // JP NC,a16 (- - - -)
             if(!r->carry_flag()){
                 additional_cycles = 4;
-                r->pc = DIRECT_U16;
+                r->pc = direct_u16;
             }
             break;
 
@@ -1471,7 +1470,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xD4: // CALL NC,a16 (- - - -)
-            CONDITIONAL_CALL_IMPL(!r->carry_flag(), DIRECT_U16);
+            CONDITIONAL_CALL_IMPL(!r->carry_flag(), direct_u16);
             break;
 
         case 0xD5: // PUSH DE (- - - -)
@@ -1479,7 +1478,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xD6: // SUB d8 (Z 1 H C)
-            sub_a_impl(DIRECT_U8, False, r);
+            sub_a_impl(direct_u8, False, r);
             break;
 
         case 0xD7: // RST 10H (- - - -)
@@ -1502,7 +1501,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0xDA: // JP C,a16 (- - - -)
             if(r->carry_flag()){
                 additional_cycles = 4;
-                r->pc = DIRECT_U16;
+                r->pc = direct_u16;
             }
             break;
 
@@ -1510,14 +1509,14 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xDC: // CALL C,a16 (- - - -)
-            CONDITIONAL_CALL_IMPL(r->carry_flag(), DIRECT_U16);
+            CONDITIONAL_CALL_IMPL(r->carry_flag(), direct_u16);
             break;
 
         case 0xDD: // INVALID_INSTRUCTION
             break;
 
         case 0xDE: // SBC A,d8 (Z 1 H C)
-            sub_a_impl(DIRECT_U8, True, r);
+            sub_a_impl(direct_u8, True, r);
             break;
 
         case 0xDF: // RST 18H (- - - -)
@@ -1526,7 +1525,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xE0: // LDH (a8),A (- - - -)
-            emu->mem_write(0xFF00 + (U16)DIRECT_U8, r->a);
+            emu->mem_write(0xFF00 + (U16)direct_u8, r->a);
             break;
 
         case 0xE1: // POP HL (- - - -)
@@ -1547,7 +1546,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xE6: // AND d8 (Z 0 1 0)
-            and_a_impl(DIRECT_U8, r);
+            and_a_impl(direct_u8, r);
             break;
 
         case 0xE7: // RST 20H (- - - -)
@@ -1556,7 +1555,8 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xE8:{// ADD SP,r8 (0 0 H C)
-            U16 operand = DIRECT_U8;
+            //TODO: the operand should be _signed_, but how does that affect the carry flags?
+            U16 operand = direct_u8;
             r->set_zero_flag(0);
             r->set_subtract_flag(0);
             r->set_halfcarry_flag(u16_add_will_halfcarry(r->sp, operand));
@@ -1565,11 +1565,11 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;}
 
         case 0xE9: // JP (HL) (- - - -)
-            r->pc = READ_HL;
+            r->pc = emu->mem_read<U8>(r->hl);
             break;
 
         case 0xEA: // LD (a16),A (- - - -)
-            emu->mem_write(DIRECT_U16, r->a);
+            emu->mem_write(direct_u16, r->a);
             break;
 
         case 0xEB: // INVALID_INSTRUCTION
@@ -1580,7 +1580,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xEE: // XOR d8 (Z 0 0 0)
-            xor_a_impl(DIRECT_U8, r);
+            xor_a_impl(direct_u8, r);
             break;
 
         case 0xEF: // RST 28H (- - - -)
@@ -1589,7 +1589,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xF0: // LDH A,(a8) (- - - -)
-            r->a = emu->mem_read<U8>(0xFF00 + (U16)DIRECT_U8);
+            r->a = emu->mem_read<U8>(0xFF00 + (U16)direct_u8);
             break;
 
         case 0xF1: // POP AF (Z N H C)
@@ -1619,7 +1619,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xF6: // OR d8 (Z 0 0 0)
-            or_a_impl(DIRECT_U8, r);
+            or_a_impl(direct_u8, r);
             break;
 
         case 0xF7: // RST 30H (- - - -)
@@ -1628,7 +1628,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xF8:{// LD HL,SP+r8 (0 0 H C)
-            U16 relative_address = DIRECT_U8;
+            U16 relative_address = direct_u8;
             r->set_zero_flag(0);
             r->set_subtract_flag(0);
             //TODO: wtf are these carry flags supposed to be?
@@ -1642,7 +1642,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xFA: // LD A,(a16) (- - - -)
-            r->a = emu->mem_read<U8>(DIRECT_U16);
+            r->a = emu->mem_read<U8>(direct_u16);
             break;
 
         case 0xFB: // EI
@@ -1661,7 +1661,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xFE: // CP d8 (Z 1 H C)
-            cp_a_impl(DIRECT_U8, r);
+            cp_a_impl(direct_u8, r);
             break;
 
         case 0xFF: // RST 38H
@@ -1670,11 +1670,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
     }
 
-    return opcode->cycles + additional_cycles;
-
-#   undef DIRECT_U16
-#   undef DIRECT_U8
-#   undef READ_HL
+    return opcode_description.cycles + additional_cycles;
 }
 
 void emu_step(Emulator* emu) {
