@@ -200,6 +200,63 @@ unsigned u16_add_will_carry(U16 hl, U16 operand) {
     return (promoted > 0x0000FFFF);
 }
 
+void add_a_impl(U8 operand, BOOL32 add_carry, CPU::Registers* r) {
+    if(add_carry && r->carry_flag())
+        operand += 1;
+
+    r->set_subtract_flag(0);
+    r->set_halfcarry_flag(add_will_halfcarry(r->a, operand));
+    r->set_carry_flag(add_will_carry(r->a, operand));
+    r->a += operand;
+    r->set_zero_flag(r->a == 0);
+}
+
+void sub_a_impl(U8 operand, BOOL32 sub_carry, CPU::Registers* r) {
+    if(sub_carry && r->carry_flag())
+        operand += 1;
+
+    r->set_subtract_flag(1);
+    r->set_halfcarry_flag(sub_will_halfborrow(r->a, operand));
+    r->set_carry_flag(sub_will_borrow(r->a, operand));
+    r->a -= operand;
+    r->set_zero_flag(r->a == 0);
+}
+
+void cp_a_impl(U8 operand, CPU::Registers* r) {
+    /*
+     Compare A with n. This is basically an A - n subtraction instruction
+     but the results are thrown away.
+     */
+    r->set_zero_flag((r->a - operand) == 0);
+    r->set_subtract_flag(1);
+    r->set_halfcarry_flag(sub_will_halfborrow(r->a, operand));
+    r->set_carry_flag(sub_will_borrow(r->a, operand));
+}
+
+void and_a_impl(U8 operand, CPU::Registers* r) {
+    r->a &= operand;
+    r->set_zero_flag(r->a == 0);
+    r->set_subtract_flag(0);
+    r->set_halfcarry_flag(1);
+    r->set_carry_flag(0);
+}
+
+void or_a_impl(U8 operand, CPU::Registers* r) {
+    r->a |= operand;
+    r->set_zero_flag(r->a == 0);
+    r->set_subtract_flag(0);
+    r->set_halfcarry_flag(0);
+    r->set_carry_flag(0);
+}
+
+void xor_a_impl(U8 operand, CPU::Registers* r) {
+    r->a ^= operand;
+    r->set_zero_flag(r->a == 0);
+    r->set_subtract_flag(0);
+    r->set_halfcarry_flag(0);
+    r->set_carry_flag(0);
+}
+
 inline
 void rlc(U8* in_out_value, CPU::Registers* registers) {
     /*
@@ -294,10 +351,10 @@ void emu_stack_push(Emulator* emu, U16 value) {
     emu_mem_write(emu, emu->registers.sp, value);
 }
 
-U8 emu_cb_read(Emulator* emu, U8 cb_instr) {
+U8 emu_standard_operand_read(Emulator* emu, U8 opcode) {
     CPU::Registers* r = &emu->registers;
 
-    U8 lower_nibble = (cb_instr & 0x0F);
+    U8 lower_nibble = (opcode & 0x0F);
     switch(lower_nibble){
         case 0x00: case 0x08: return r->b;
         case 0x01: case 0x09: return r->c;
@@ -313,10 +370,10 @@ U8 emu_cb_read(Emulator* emu, U8 cb_instr) {
     }
 }
 
-void emu_cb_write(Emulator* emu, U8 cb_instr, U8 value) {
+void emu_standard_operand_write(Emulator* emu, U8 opcode, U8 value) {
     CPU::Registers* r = &emu->registers;
 
-    U8 lower_nibble = (cb_instr & 0x0F);
+    U8 lower_nibble = (opcode & 0x0F);
     switch(lower_nibble){
         case 0x00: case 0x08: r->b = value; break;
         case 0x01: case 0x09: r->c = value; break;
@@ -333,7 +390,7 @@ void emu_cb_write(Emulator* emu, U8 cb_instr, U8 value) {
 
 void emu_cb_instruction(Emulator* emu, U8 cb_instr) {
     CPU::Registers* r = &emu->registers;
-    U8 operand = emu_cb_read(emu, cb_instr);
+    U8 operand = emu_standard_operand_read(emu, cb_instr);
 
     switch(cb_instr){
         case 0x00: // RLC B (Z 0 0 C)
@@ -696,7 +753,7 @@ void emu_cb_instruction(Emulator* emu, U8 cb_instr) {
             break;}
     }
 
-    emu_cb_write(emu, cb_instr, operand);
+    emu_standard_operand_write(emu, cb_instr, operand);
 }
 
 void debug_print_instruction(U8* instr, U16 pc) {
@@ -1127,481 +1184,181 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x40: // LD B,B (- - - -)
-            // NOP
-            break;
         case 0x41: // LD B,C (- - - -)
-            r->b = r->c;
-            break;
         case 0x42: // LD B,D (- - - -)
-            r->b = r->d;
-            break;
         case 0x43: // LD B,E (- - - -)
-            r->b = r->e;
-            break;
         case 0x44: // LD B,H (- - - -)
-            r->b = r->h;
-            break;
         case 0x45: // LD B,L (- - - -)
-            r->b = r->l;
-            break;
         case 0x46: // LD B,(HL) (- - - -)
-            r->b = READ_HL;
-            break;
         case 0x47: // LD B,A (- - - -)
-            r->b = r->a;
+            r->b = emu_standard_operand_read(emu, *instr);
             break;
 
         case 0x48: // LD C,B (- - - -)
-            r->c = r->b;
-            break;
         case 0x49: // LD C,C (- - - -)
-            // NOP
-            break;
         case 0x4A: // LD C,D (- - - -)
-            r->c = r->d;
-            break;
         case 0x4B: // LD C,E (- - - -)
-            r->c = r->e;
-            break;
         case 0x4C: // LD C,H (- - - -)
-            r->c = r->h;
-            break;
         case 0x4D: // LD C,L (- - - -)
-            r->c = r->l;
-            break;
         case 0x4E: // LD C,(HL) (- - - -)
-            r->c = READ_HL;
-            break;
         case 0x4F: // LD C,A (- - - -)
-            r->c = r-> a;
+            r->c = emu_standard_operand_read(emu, *instr);
             break;
 
         case 0x50: // LD D,B (- - - -)
-            r->d = r->b;
-            break;
         case 0x51: // LD D,C (- - - -)
-            r->d = r->c;
-            break;
         case 0x52: // LD D,D (- - - -)
-            // NOP
-            break;
         case 0x53: // LD D,E (- - - -)
-            r->d = r->e;
-            break;
         case 0x54: // LD D,H (- - - -)
-            r->d = r->h;
-            break;
         case 0x55: // LD D,L (- - - -)
-            r->d = r->l;
-            break;
         case 0x56: // LD D,(HL) (- - - -)
-            r->d = READ_HL;
-            break;
         case 0x57: // LD D,A (- - - -)
-            r->d = r->a;
+            r->d = emu_standard_operand_read(emu, *instr);
             break;
 
         case 0x58: // LD E,B (- - - -)
-            r->e = r->b;
-            break;
         case 0x59: // LD E,C (- - - -)
-            r->e = r->c;
-            break;
         case 0x5A: // LD E,D (- - - -)
-            r->e = r->d;
-            break;
         case 0x5B: // LD E,E (- - - -)
-            // NOP
-            break;
         case 0x5C: // LD E,H (- - - -)
-            r->e = r->h;
-            break;
         case 0x5D: // LD E,L (- - - -)
-            r->e = r->l;
-            break;
         case 0x5E: // LD E,(HL) (- - - -)
-            r->e = READ_HL;
-            break;
         case 0x5F: // LD E,A (- - - -)
-            r->e = r->a;
+            r->e = emu_standard_operand_read(emu, *instr);
             break;
 
         case 0x60: // LD H,B (- - - -)
-            r->h = r->b;
-            break;
         case 0x61: // LD H,C (- - - -)
-            r->h = r->c;
-            break;
         case 0x62: // LD H,D (- - - -)
-            r->h = r->d;
-            break;
         case 0x63: // LD H,E (- - - -)
-            r->h = r->e;
-            break;
         case 0x64: // LD H,H (- - - -)
-            // NOP
-            break;
         case 0x65: // LD H,L (- - - -)
-            r->h = r->l;
-            break;
         case 0x66: // LD H,(HL) (- - - -)
-            r->h = READ_HL;
-            break;
         case 0x67: // LD H,A (- - - -)
-            r->h = r->a;
+            r->h = emu_standard_operand_read(emu, *instr);
             break;
 
         case 0x68: // LD L,B (- - - -)
-            r->l = r->b;
-            break;
         case 0x69: // LD L,C (- - - -)
-            r->l = r->c;
-            break;
         case 0x6A: // LD L,D (- - - -)
-            r->l = r->d;
-            break;
         case 0x6B: // LD L,E (- - - -)
-            r->l = r->e;
-            break;
         case 0x6C: // LD L,H (- - - -)
-            r->l = r->h;
-            break;
         case 0x6D: // LD L,L (- - - -)
-            // NOP
-            break;
         case 0x6E: // LD L,(HL) (- - - -)
-            r->l = READ_HL;
-            break;
         case 0x6F: // LD L,A (- - - -)
-            r->l = r->a;
+            r->l = emu_standard_operand_read(emu, *instr);
             break;
 
         case 0x70: // LD (HL),B (- - - -)
-            emu_mem_write(emu, r->hl, r->b);
-            break;
         case 0x71: // LD (HL),C (- - - -)
-            emu_mem_write(emu, r->hl, r->c);
-            break;
         case 0x72: // LD (HL),D (- - - -)
-            emu_mem_write(emu, r->hl, r->d);
-            break;
         case 0x73: // LD (HL),E (- - - -)
-            emu_mem_write(emu, r->hl, r->e);
-            break;
         case 0x74: // LD (HL),H (- - - -)
-            emu_mem_write(emu, r->hl, r->h);
-            break;
         case 0x75: // LD (HL),L (- - - -)
-            emu_mem_write(emu, r->hl, r->l);
+        //   0x76 is the HALT opcode
+        case 0x77: // LD (HL),A (- - - -)
+            emu_mem_write(emu, r->hl, emu_standard_operand_read(emu, *instr));
             break;
 
         case 0x76: // HALT (- - - -)
             //TODO: here
             break;
 
-        case 0x77: // LD (HL),A (- - - -)
-            emu_mem_write(emu, r->hl, r->a);
-            break;
         case 0x78: // LD A,B (- - - -)
-            r->a = r->b;
-            break;
         case 0x79: // LD A,C (- - - -)
-            r->a = r->c;
-            break;
         case 0x7A: // LD A,D (- - - -)
-            r->a = r->d;
-            break;
         case 0x7B: // LD A,E (- - - -)
-            r->a = r->e;
-            break;
         case 0x7C: // LD A,H (- - - -)
-            r->a = r->h;
-            break;
         case 0x7D: // LD A,L (- - - -)
-            r->a = r->l;
-            break;
         case 0x7E: // LD A,(HL) (- - - -)
-            r->a = READ_HL;
-            break;
         case 0x7F: // LD A,A (- - - -)
-            // NOP
+            r->a = emu_standard_operand_read(emu, *instr);
             break;
-
-// assumes (Z 0 H C)
-#define ADD_A_IMPL(OPERAND) \
-    do { \
-        U8 op = OPERAND; \
-        r->set_subtract_flag(0); \
-        r->set_halfcarry_flag(add_will_halfcarry(r->a, op)); \
-        r->set_carry_flag(add_will_carry(r->a, op)); \
-        r->a += op; \
-        r->set_zero_flag((r->a == 0)); \
-    } while(0)
 
         case 0x80: // ADD A,B (Z 0 H C)
-            ADD_A_IMPL(r->b);
-            break;
         case 0x81: // ADD A,C (Z 0 H C)
-            ADD_A_IMPL(r->c);
-            break;
         case 0x82: // ADD A,D (Z 0 H C)
-            ADD_A_IMPL(r->d);
-            break;
         case 0x83: // ADD A,E (Z 0 H C)
-            ADD_A_IMPL(r->e);
-            break;
         case 0x84: // ADD A,H (Z 0 H C)
-            ADD_A_IMPL(r->h);
-            break;
         case 0x85: // ADD A,L (Z 0 H C)
-            ADD_A_IMPL(r->l);
-            break;
         case 0x86: // ADD A,(HL) (Z 0 H C)
-            ADD_A_IMPL(READ_HL);
-            break;
         case 0x87: // ADD A,A (Z 0 H C)
-            ADD_A_IMPL(r->a);
-            break;
-
-//assumes (Z 0 H C)
-#define ADC_A_IMPL(OPERAND) \
-    ADD_A_IMPL((OPERAND) + (r->carry_flag() ? 1 : 0))
 
         case 0x88: // ADC A,B (Z 0 H C)
-            ADC_A_IMPL(r->b);
-            break;
         case 0x89: // ADC A,C (Z 0 H C)
-            ADC_A_IMPL(r->c);
-            break;
         case 0x8A: // ADC A,D (Z 0 H C)
-            ADC_A_IMPL(r->d);
-            break;
         case 0x8B: // ADC A,E (Z 0 H C)
-            ADC_A_IMPL(r->e);
-            break;
         case 0x8C: // ADC A,H (Z 0 H C)
-            ADC_A_IMPL(r->h);
-            break;
         case 0x8D: // ADC A,L (Z 0 H C)
-            ADC_A_IMPL(r->l);
-            break;
         case 0x8E: // ADC A,(HL) (Z 0 H C)
-            ADC_A_IMPL(READ_HL);
-            break;
-        case 0x8F: // ADC A,A (Z 0 H C)
-            ADC_A_IMPL(r->a);
-            break;
-
-//assumes (Z 1 H C)
-#define SUB_A_IMPL(OPERAND) \
-    do { \
-        U8 op = OPERAND; \
-        r->set_subtract_flag(1); \
-        r->set_halfcarry_flag(sub_will_halfborrow(r->a, op)); \
-        r->set_carry_flag(sub_will_borrow(r->a, op)); \
-        r->a -= op; \
-        r->set_zero_flag((r->a == 0)); \
-    } while(0)
+        case 0x8F:{// ADC A,A (Z 0 H C)
+            add_a_impl(emu_standard_operand_read(emu, *instr), (*instr >= 0x88), r);
+            break;}
 
         case 0x90: // SUB B (Z 1 H C)
-            SUB_A_IMPL(r->b);
-            break;
         case 0x91: // SUB C (Z 1 H C)
-            SUB_A_IMPL(r->c);
-            break;
         case 0x92: // SUB D (Z 1 H C)
-            SUB_A_IMPL(r->d);
-            break;
         case 0x93: // SUB E (Z 1 H C)
-            SUB_A_IMPL(r->e);
-            break;
         case 0x94: // SUB H (Z 1 H C)
-            SUB_A_IMPL(r->h);
-            break;
         case 0x95: // SUB L (Z 1 H C)
-            SUB_A_IMPL(r->l);
-            break;
         case 0x96: // SUB (HL) (Z 1 H C)
-            SUB_A_IMPL(READ_HL);
-            break;
         case 0x97: // SUB A (Z 1 H C)
-            SUB_A_IMPL(r->a);
-            break;
 
-#define SBC_A_IMPL(OPERAND) \
-    SUB_A_IMPL((OPERAND) - (r->carry_flag() ? 1 : 0))
-
-        case 0x98: // SBC A,B
-            SBC_A_IMPL(r->b);
+        case 0x98: // SBC A,B (Z 1 H C)
+        case 0x99: // SBC A,C (Z 1 H C)
+        case 0x9A: // SBC A,D (Z 1 H C)
+        case 0x9B: // SBC A,E (Z 1 H C)
+        case 0x9C: // SBC A,H (Z 1 H C)
+        case 0x9D: // SBC A,L (Z 1 H C)
+        case 0x9E: // SBC A,(HL) (Z 1 H C)
+        case 0x9F: // SBC A,A (Z 1 H C)
+            sub_a_impl(emu_standard_operand_read(emu, *instr), (*instr >= 0x98), r);
             break;
-        case 0x99: // SBC A,C
-            SBC_A_IMPL(r->c);
-            break;
-        case 0x9A: // SBC A,D
-            SBC_A_IMPL(r->d);
-            break;
-        case 0x9B: // SBC A,E
-            SBC_A_IMPL(r->e);
-            break;
-        case 0x9C: // SBC A,H
-            SBC_A_IMPL(r->h);
-            break;
-        case 0x9D: // SBC A,L
-            SBC_A_IMPL(r->l);
-            break;
-        case 0x9E: // SBC A,(HL)
-            SBC_A_IMPL(READ_HL);
-            break;
-        case 0x9F: // SBC A,A
-            SBC_A_IMPL(r->a);
-            break;
-
-//assumes (Z 0 1 0)
-#define AND_A_IMPL(OPERAND) \
-    do { \
-        r->a &= (OPERAND); \
-        r->set_zero_flag((r->a == 0)); \
-        r->set_subtract_flag(0); \
-        r->set_halfcarry_flag(1); \
-        r->set_carry_flag(0); \
-    } while(0)
 
         case 0xA0: // AND B (Z 0 1 0)
-            AND_A_IMPL(r->b);
-            break;
         case 0xA1: // AND C (Z 0 1 0)
-            AND_A_IMPL(r->c);
-            break;
         case 0xA2: // AND D (Z 0 1 0)
-            AND_A_IMPL(r->d);
-            break;
         case 0xA3: // AND E (Z 0 1 0)
-            AND_A_IMPL(r->e);
-            break;
         case 0xA4: // AND H (Z 0 1 0)
-            AND_A_IMPL(r->h);
-            break;
         case 0xA5: // AND L (Z 0 1 0)
-            AND_A_IMPL(r->l);
-            break;
         case 0xA6: // AND (HL) (Z 0 1 0)
-            AND_A_IMPL(READ_HL);
-            break;
         case 0xA7: // AND A (Z 0 1 0)
-            AND_A_IMPL(r->a);
+            and_a_impl(emu_standard_operand_read(emu, *instr), r);
             break;
-
-//assumes (Z 0 0 0)
-#define XOR_A_IMPL(OPERAND) \
-    do { \
-        r->a ^= (OPERAND); \
-        r->set_zero_flag((r->a == 0)); \
-        r->set_subtract_flag(0); \
-        r->set_halfcarry_flag(0); \
-        r->set_carry_flag(0); \
-    } while(0)
 
         case 0xA8: // XOR B (Z 0 0 0)
-            XOR_A_IMPL(r->b);
-            break;
         case 0xA9: // XOR C (Z 0 0 0)
-            XOR_A_IMPL(r->c);
-            break;
         case 0xAA: // XOR D (Z 0 0 0)
-            XOR_A_IMPL(r->d);
-            break;
         case 0xAB: // XOR E (Z 0 0 0)
-            XOR_A_IMPL(r->e);
-            break;
         case 0xAC: // XOR H (Z 0 0 0)
-            XOR_A_IMPL(r->h);
-            break;
         case 0xAD: // XOR L (Z 0 0 0)
-            XOR_A_IMPL(r->l);
-            break;
         case 0xAE: // XOR (HL) (Z 0 0 0)
-            XOR_A_IMPL(READ_HL);
-            break;
         case 0xAF: // XOR A (Z 0 0 0)
-            XOR_A_IMPL(r->a);
+            xor_a_impl(emu_standard_operand_read(emu, *instr), r);
             break;
-
-//assumes (Z 0 0 0)
-#define OR_A_IMPL(OPERAND) \
-    do { \
-        r->a |= (OPERAND); \
-        r->set_zero_flag((r->a == 0)); \
-        r->set_subtract_flag(0); \
-        r->set_halfcarry_flag(0); \
-        r->set_carry_flag(0); \
-    } while(0)
 
         case 0xB0: // OR B (Z 0 0 0)
-            OR_A_IMPL(r->b);
-            break;
         case 0xB1: // OR C (Z 0 0 0)
-            OR_A_IMPL(r->c);
-            break;
         case 0xB2: // OR D (Z 0 0 0)
-            OR_A_IMPL(r->d);
-            break;
         case 0xB3: // OR E (Z 0 0 0)
-            OR_A_IMPL(r->e);
-            break;
         case 0xB4: // OR H (Z 0 0 0)
-            OR_A_IMPL(r->h);
-            break;
         case 0xB5: // OR L (Z 0 0 0)
-            OR_A_IMPL(r->l);
-            break;
         case 0xB6: // OR (HL) (Z 0 0 0)
-            OR_A_IMPL(READ_HL);
-            break;
         case 0xB7: // OR A (Z 0 0 0)
-            OR_A_IMPL(r->a);
+            or_a_impl(emu_standard_operand_read(emu, *instr), r);
             break;
-
-/*
- Compare A with n. This is basically an A - n subtraction instruction
- but the results are thrown away.
- 
- assumes (Z 1 H C)
-*/
-#define CP_A_IMPL(OPERAND) \
-    do { \
-        U8 op = (OPERAND); \
-        r->set_zero_flag(((r->a - op) == 0)); \
-        r->set_subtract_flag(1); \
-        r->set_halfcarry_flag(sub_will_halfborrow(r->a, op)); \
-        r->set_carry_flag(sub_will_borrow(r->a, op)); \
-    } while(0)
 
         case 0xB8: // CP B (Z 1 H C)
-            CP_A_IMPL(r->b);
-            break;
         case 0xB9: // CP C (Z 1 H C)
-            CP_A_IMPL(r->c);
-            break;
         case 0xBA: // CP D (Z 1 H C)
-            CP_A_IMPL(r->d);
-            break;
         case 0xBB: // CP E (Z 1 H C)
-            CP_A_IMPL(r->e);
-            break;
         case 0xBC: // CP H (Z 1 H C)
-            CP_A_IMPL(r->h);
-            break;
         case 0xBD: // CP L (Z 1 H C)
-            CP_A_IMPL(r->l);
-            break;
         case 0xBE: // CP (HL) (Z 1 H C)
-            CP_A_IMPL(READ_HL);
-            break;
         case 0xBF: // CP A (Z 1 H C)
-            CP_A_IMPL(r->a);
+            cp_a_impl(emu_standard_operand_read(emu, *instr), r);
             break;
 
-//TODO: implement this
 //Pop two bytes from stack & jump to that address.
 #define RET_IMPL JUMP_TO(emu_stack_pop(emu));
 
@@ -1652,7 +1409,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xC6: // ADD A,d8 (Z 0 H C)
-            ADD_A_IMPL(DIRECT_U8);
+            add_a_impl(DIRECT_U8, False, r);
             break;
 
         case 0xC7: // RST 00H (- - - -)
@@ -1693,7 +1450,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xCE: // ADC A,d8 (Z 0 H C)
-            ADC_A_IMPL(DIRECT_U8);
+            add_a_impl(DIRECT_U8, True, r);
             break;
 
         case 0xCF: // RST 08H (- - - -)
@@ -1731,7 +1488,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xD6: // SUB d8 (Z 1 H C)
-            SUB_A_IMPL(DIRECT_U8);
+            sub_a_impl(DIRECT_U8, False, r);
             break;
 
         case 0xD7: // RST 10H (- - - -)
@@ -1769,7 +1526,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xDE: // SBC A,d8 (Z 1 H C)
-            SBC_A_IMPL(DIRECT_U8);
+            sub_a_impl(DIRECT_U8, True, r);
             break;
 
         case 0xDF: // RST 18H (- - - -)
@@ -1799,7 +1556,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xE6: // AND d8 (Z 0 1 0)
-            AND_A_IMPL(DIRECT_U8);
+            and_a_impl(DIRECT_U8, r);
             break;
 
         case 0xE7: // RST 20H (- - - -)
@@ -1832,7 +1589,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xEE: // XOR d8 (Z 0 0 0)
-            XOR_A_IMPL(DIRECT_U8);
+            xor_a_impl(DIRECT_U8, r);
             break;
 
         case 0xEF: // RST 28H (- - - -)
@@ -1871,7 +1628,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xF6: // OR d8 (Z 0 0 0)
-            OR_A_IMPL(DIRECT_U8);
+            or_a_impl(DIRECT_U8, r);
             break;
 
         case 0xF7: // RST 30H (- - - -)
@@ -1913,7 +1670,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xFE: // CP d8 (Z 1 H C)
-            CP_A_IMPL(DIRECT_U8);
+            cp_a_impl(DIRECT_U8, r);
             break;
 
         case 0xFF: // RST 38H
