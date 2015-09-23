@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E212FDCC1BB2F846007E74AF /* emulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E212FDCB1BB2F846007E74AF /* emulator.cpp */; };
 		E2D6A0001BAAAD7700B71FC2 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E2D69FFF1BAAAD7700B71FC2 /* main.cpp */; };
 /* End PBXBuildFile section */
 
@@ -26,6 +27,8 @@
 		E212FDC71BB0E397007E74AF /* cart.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = cart.hpp; sourceTree = "<group>"; };
 		E212FDC81BB0E40C007E74AF /* types.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = types.hpp; sourceTree = "<group>"; };
 		E212FDC91BB0E9F8007E74AF /* cpu.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = cpu.hpp; sourceTree = "<group>"; };
+		E212FDCA1BB2F775007E74AF /* emulator.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = emulator.hpp; sourceTree = "<group>"; };
+		E212FDCB1BB2F846007E74AF /* emulator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = emulator.cpp; sourceTree = "<group>"; };
 		E2D69FFC1BAAAD7700B71FC2 /* gemuboi */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = gemuboi; sourceTree = BUILT_PRODUCTS_DIR; };
 		E2D69FFF1BAAAD7700B71FC2 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -64,6 +67,8 @@
 				E212FDC71BB0E397007E74AF /* cart.hpp */,
 				E212FDC91BB0E9F8007E74AF /* cpu.hpp */,
 				E2D69FFF1BAAAD7700B71FC2 /* main.cpp */,
+				E212FDCA1BB2F775007E74AF /* emulator.hpp */,
+				E212FDCB1BB2F846007E74AF /* emulator.cpp */,
 			);
 			path = gemuboi;
 			sourceTree = "<group>";
@@ -123,6 +128,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E212FDCC1BB2F846007E74AF /* emulator.cpp in Sources */,
 				E2D6A0001BAAAD7700B71FC2 /* main.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
