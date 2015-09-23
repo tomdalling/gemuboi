@@ -31,10 +31,9 @@
  
  So writing 0x01 to the address 0xFF50 disables the bootstrap rom, enabling the
  address range 0x0000-0x00FF to be read from the cartridge instead.
-
  */
 const U16 BootstrapRomFlagAddress = 0xFF50;
-const U16 BootstrapRomSize = 0x0100;
+const U16 BootstrapRomSize = 256;
 const U16 BootstrapRomFlag_Enabled = 0x00; // BS ROM is readable
 //const U16 BootstrapRomFlag_Disabled = 0x01; // BS ROM not readable (replaced by cartridge ROM)
 U8 BootstrapRom[BootstrapRomSize] = {
@@ -201,6 +200,89 @@ unsigned u16_add_will_carry(U16 hl, U16 operand) {
     return (promoted > 0x0000FFFF);
 }
 
+inline
+void rlc(U8* in_out_value, CPU::Registers* registers) {
+    /*
+        Rotate left, copy to carry.
+        Old high bit (7) becomes the new low bit (0).
+        Old high bit (7) also gets stored in the carry flag.
+      
+                +---------------------------------+
+                |                                 |
+                |                                 v
+        +---+   |   +---+---+---+---+---+---+---+---+
+        | C |<--+---| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+        +---+       +---+---+---+---+---+---+---+---+
+
+     */
+
+    U8 old_high_bit = (*in_out_value & 0x80); //remember high bit
+    *in_out_value = (*in_out_value << 1) | (old_high_bit >> 7);
+    registers->set_carry_flag(old_high_bit);
+}
+
+inline
+void rrc(U8* in_out_value, CPU::Registers* registers) {
+    /*
+     Rotate right, copy to carry.
+     Old low bit (0) becomes the new high bit (7).
+     Old low bit (0) to the carry flag.
+
+          +-----+---------------------------------+
+          |     |                                 |
+          v     |                                 |
+        +---+   |   +---+---+---+---+---+---+---+---+
+        | C |   +-->| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+        +---+       +---+---+---+---+---+---+---+---+
+     */
+
+    U8 old_low_bit = (*in_out_value & 0x01);
+    *in_out_value = (*in_out_value >> 1) | (old_low_bit << 7);
+    registers->set_carry_flag(old_low_bit);
+}
+
+inline
+void rr(U8* in_out_value, CPU::Registers* registers) {
+    /*
+     Rotate right, through carry flag.
+     Old low bit (0) becomes the new carry flag.
+     Old carry flag becomes the new high bit (7).
+
+       +---------------------------------------+
+       |                                       |
+       v                                       |
+     +---+       +---+---+---+---+---+---+---+---+
+     | C |------>| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+     +---+       +---+---+---+---+---+---+---+---+
+    */
+    U8 old_low_bit = (*in_out_value & 0x01);
+    U8 old_carry = (registers->carry_flag() ? 0x80 : 0x00);
+    *in_out_value = (*in_out_value >> 1) | old_carry;
+    registers->set_carry_flag(old_low_bit);
+}
+
+inline
+void rl(U8* in_out_value, CPU::Registers* registers) {
+    /*
+     Bitwise rotate A left through carry flag.
+     Old high bit (7) becomes the new carry flag.
+     Old carry flag becomes the new low bit (0).
+
+       +---------------------------------------+
+       |                                       |
+       |                                       v
+     +---+       +---+---+---+---+---+---+---+---+
+     | C |<------| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+     +---+       +---+---+---+---+---+---+---+---+
+    */
+
+    U8 old_carry = (registers->carry_flag() ? 0x01 : 0x00);
+    U8 old_high_bit = (*in_out_value & 0x80);
+    *in_out_value = (*in_out_value << 1) | old_carry;
+    registers->set_carry_flag(old_high_bit);
+}
+
+
 U16 emu_stack_pop(Emulator* emu) {
     U16 retval = emu_mem_read<U16>(emu, emu->registers.sp);
     emu->registers.sp += 2;
@@ -210,6 +292,440 @@ U16 emu_stack_pop(Emulator* emu) {
 void emu_stack_push(Emulator* emu, U16 value) {
     emu->registers.sp -= 2;
     emu_mem_write(emu, emu->registers.sp, value);
+}
+
+U8 emu_cb_read(Emulator* emu, U8 cb_instr) {
+    CPU::Registers* r = &emu->registers;
+
+    U8 lower_nibble = (cb_instr & 0x0F);
+    switch(lower_nibble){
+        case 0x00: case 0x08: return r->b;
+        case 0x01: case 0x09: return r->c;
+        case 0x02: case 0x0A: return r->d;
+        case 0x03: case 0x0B: return r->e;
+        case 0x04: case 0x0C: return r->h;
+        case 0x05: case 0x0D: return r->l;
+        case 0x06: case 0x0E: return emu_mem_read<U8>(emu, r->hl);
+        case 0x07: case 0x0F: return r->a;
+        default:
+            assert(0); //should never get here
+            return 0;
+    }
+}
+
+void emu_cb_write(Emulator* emu, U8 cb_instr, U8 value) {
+    CPU::Registers* r = &emu->registers;
+
+    U8 lower_nibble = (cb_instr & 0x0F);
+    switch(lower_nibble){
+        case 0x00: case 0x08: r->b = value; break;
+        case 0x01: case 0x09: r->c = value; break;
+        case 0x02: case 0x0A: r->d = value; break;
+        case 0x03: case 0x0B: r->e = value; break;
+        case 0x04: case 0x0C: r->h = value; break;
+        case 0x05: case 0x0D: r->l = value; break;
+        case 0x06: case 0x0E: return emu_mem_write(emu, r->hl, value); break;
+        case 0x07: case 0x0F: r->a = value; break;
+        default:
+            assert(0); //should never get here
+    }
+}
+
+void emu_cb_instruction(Emulator* emu, U8 cb_instr) {
+    CPU::Registers* r = &emu->registers;
+    U8 operand = emu_cb_read(emu, cb_instr);
+
+    switch(cb_instr){
+        case 0x00: // RLC B (Z 0 0 C)
+        case 0x01: // RLC C (Z 0 0 C)
+        case 0x02: // RLC D (Z 0 0 C)
+        case 0x03: // RLC E (Z 0 0 C)
+        case 0x04: // RLC H (Z 0 0 C)
+        case 0x05: // RLC L (Z 0 0 C)
+        case 0x06: // RLC (HL) (Z 0 0 C)
+        case 0x07: // RLC A (Z 0 0 C)
+            // Rotate left. Old bit 7 to Carry flag.
+            rlc(&operand, r);
+            r->set_zero_flag(operand == 0);
+            r->set_subtract_flag(0);
+            r->set_halfcarry_flag(0);
+            break;
+
+        case 0x08: // RRC B (Z 0 0 C)
+        case 0x09: // RRC C (Z 0 0 C)
+        case 0x0A: // RRC D (Z 0 0 C)
+        case 0x0B: // RRC E (Z 0 0 C)
+        case 0x0C: // RRC H (Z 0 0 C)
+        case 0x0D: // RRC L (Z 0 0 C)
+        case 0x0E: // RRC (HL) (Z 0 0 C)
+        case 0x0F: // RRC A (Z 0 0 C)
+            // Rotate right. Old bit 0 to Carry flag.
+            rrc(&operand, r);
+            r->set_zero_flag(operand == 0);
+            r->set_subtract_flag(0);
+            r->set_halfcarry_flag(0);
+            break;
+
+        case 0x10: // RL B (Z 0 0 C)
+        case 0x11: // RL C (Z 0 0 C)
+        case 0x12: // RL D (Z 0 0 C)
+        case 0x13: // RL E (Z 0 0 C)
+        case 0x14: // RL H (Z 0 0 C)
+        case 0x15: // RL L (Z 0 0 C)
+        case 0x16: // RL (HL) (Z 0 0 C)
+        case 0x17: // RL A (Z 0 0 C)
+            //Rotate left through Carry flag.
+            rl(&operand, r);
+            r->set_zero_flag(operand == 0);
+            r->set_subtract_flag(0);
+            r->set_halfcarry_flag(0);
+            break;
+
+        case 0x18: // RR B (Z 0 0 C)
+        case 0x19: // RR C (Z 0 0 C)
+        case 0x1A: // RR D (Z 0 0 C)
+        case 0x1B: // RR E (Z 0 0 C)
+        case 0x1C: // RR H (Z 0 0 C)
+        case 0x1D: // RR L (Z 0 0 C)
+        case 0x1E: // RR (HL) (Z 0 0 C)
+        case 0x1F: // RR A (Z 0 0 C)
+            //Rotate right through Carry flag.
+            rr(&operand, r);
+            r->set_zero_flag(operand == 0);
+            r->set_subtract_flag(0);
+            r->set_halfcarry_flag(0);
+            break;
+
+        case 0x20: // SLA B (Z 0 0 C)
+        case 0x21: // SLA C (Z 0 0 C)
+        case 0x22: // SLA D (Z 0 0 C)
+        case 0x23: // SLA E (Z 0 0 C)
+        case 0x24: // SLA H (Z 0 0 C)
+        case 0x25: // SLA L (Z 0 0 C)
+        case 0x26: // SLA (HL) (Z 0 0 C)
+        case 0x27:{// SLA A (Z 0 0 C)
+            // Shift left into Carry. Low bit set to 0.
+            U8 old_high_bit = (operand & 0x80);
+            operand <<= 1;
+            r->set_zero_flag(operand == 0);
+            r->set_subtract_flag(0);
+            r->set_halfcarry_flag(0);
+            r->set_carry_flag(old_high_bit);
+            break;}
+
+        case 0x28: // SRA B (Z 0 0 0)
+        case 0x29: // SRA C (Z 0 0 0)
+        case 0x2A: // SRA D (Z 0 0 0)
+        case 0x2B: // SRA E (Z 0 0 0)
+        case 0x2C: // SRA H (Z 0 0 0)
+        case 0x2D: // SRA L (Z 0 0 0)
+        case 0x2E: // SRA (HL) (Z 0 0 0)
+        case 0x2F:{// SRA A (Z 0 0 0)
+            // Shift right into Carry. High bit doesn't change.
+            U8 old_low_bit = (operand & 0x01);
+            U8 high_bit = (operand & 0x80);
+            operand = (operand >> 1) | high_bit;
+            r->set_zero_flag(operand == 0);
+            r->set_subtract_flag(0);
+            r->set_halfcarry_flag(0);
+            //TODO: resolve conflicting specs regarding value of carry flag here
+            r->set_carry_flag(old_low_bit);
+            break;}
+
+        case 0x30: // SWAP B (Z 0 0 0)
+        case 0x31: // SWAP C (Z 0 0 0)
+        case 0x32: // SWAP D (Z 0 0 0)
+        case 0x33: // SWAP E (Z 0 0 0)
+        case 0x34: // SWAP H (Z 0 0 0)
+        case 0x35: // SWAP L (Z 0 0 0)
+        case 0x36: // SWAP (HL) (Z 0 0 0)
+        case 0x37: // SWAP A (Z 0 0 0)
+            // Swap upper and lower nibbles
+            operand = (operand << 4) | (operand >> 4);
+            r->set_zero_flag(operand == 0);
+            r->set_subtract_flag(0);
+            r->set_halfcarry_flag(0);
+            r->set_carry_flag(0);
+            break;
+
+        case 0x38: // SRL B (Z 0 0 C)
+        case 0x39: // SRL C (Z 0 0 C)
+        case 0x3A: // SRL D (Z 0 0 C)
+        case 0x3B: // SRL E (Z 0 0 C)
+        case 0x3C: // SRL H (Z 0 0 C)
+        case 0x3D: // SRL L (Z 0 0 C)
+        case 0x3E: // SRL (HL) (Z 0 0 C)
+        case 0x3F:{// SRL A (Z 0 0 C)
+            // Shift right into Carry. High bit set to 0.
+            U8 old_low_bit = (operand & 0x01);
+            operand >>= 1;
+            r->set_zero_flag(operand == 0);
+            r->set_subtract_flag(0);
+            r->set_halfcarry_flag(0);
+            r->set_carry_flag(old_low_bit);
+            break;}
+
+        case 0x40: // BIT 0,B (Z 0 1 -)
+        case 0x41: // BIT 0,C (Z 0 1 -)
+        case 0x42: // BIT 0,D (Z 0 1 -)
+        case 0x43: // BIT 0,E (Z 0 1 -)
+        case 0x44: // BIT 0,H (Z 0 1 -)
+        case 0x45: // BIT 0,L (Z 0 1 -)
+        case 0x46: // BIT 0,(HL) (Z 0 1 -)
+        case 0x47: // BIT 0,A (Z 0 1 -)
+
+        case 0x48: // BIT 1,B (Z 0 1 -)
+        case 0x49: // BIT 1,C (Z 0 1 -)
+        case 0x4A: // BIT 1,D (Z 0 1 -)
+        case 0x4B: // BIT 1,E (Z 0 1 -)
+        case 0x4C: // BIT 1,H (Z 0 1 -)
+        case 0x4D: // BIT 1,L (Z 0 1 -)
+        case 0x4E: // BIT 1,(HL) (Z 0 1 -)
+        case 0x4F: // BIT 1,A (Z 0 1 -)
+
+        case 0x50: // BIT 2,B (Z 0 1 -)
+        case 0x51: // BIT 2,C (Z 0 1 -)
+        case 0x52: // BIT 2,D (Z 0 1 -)
+        case 0x53: // BIT 2,E (Z 0 1 -)
+        case 0x54: // BIT 2,H (Z 0 1 -)
+        case 0x55: // BIT 2,L (Z 0 1 -)
+        case 0x56: // BIT 2,(HL) (Z 0 1 -)
+        case 0x57: // BIT 2,A (Z 0 1 -)
+
+        case 0x58: // BIT 3,B (Z 0 1 -)
+        case 0x59: // BIT 3,C (Z 0 1 -)
+        case 0x5A: // BIT 3,D (Z 0 1 -)
+        case 0x5B: // BIT 3,E (Z 0 1 -)
+        case 0x5C: // BIT 3,H (Z 0 1 -)
+        case 0x5D: // BIT 3,L (Z 0 1 -)
+        case 0x5E: // BIT 3,(HL) (Z 0 1 -)
+        case 0x5F: // BIT 3,A (Z 0 1 -)
+
+        case 0x60: // BIT 4,B (Z 0 1 -)
+        case 0x61: // BIT 4,C (Z 0 1 -)
+        case 0x62: // BIT 4,D (Z 0 1 -)
+        case 0x63: // BIT 4,E (Z 0 1 -)
+        case 0x64: // BIT 4,H (Z 0 1 -)
+        case 0x65: // BIT 4,L (Z 0 1 -)
+        case 0x66: // BIT 4,(HL) (Z 0 1 -)
+        case 0x67: // BIT 4,A (Z 0 1 -)
+
+        case 0x68: // BIT 5,B (Z 0 1 -)
+        case 0x69: // BIT 5,C (Z 0 1 -)
+        case 0x6A: // BIT 5,D (Z 0 1 -)
+        case 0x6B: // BIT 5,E (Z 0 1 -)
+        case 0x6C: // BIT 5,H (Z 0 1 -)
+        case 0x6D: // BIT 5,L (Z 0 1 -)
+        case 0x6E: // BIT 5,(HL) (Z 0 1 -)
+        case 0x6F: // BIT 5,A (Z 0 1 -)
+
+        case 0x70: // BIT 6,B (Z 0 1 -)
+        case 0x71: // BIT 6,C (Z 0 1 -)
+        case 0x72: // BIT 6,D (Z 0 1 -)
+        case 0x73: // BIT 6,E (Z 0 1 -)
+        case 0x74: // BIT 6,H (Z 0 1 -)
+        case 0x75: // BIT 6,L (Z 0 1 -)
+        case 0x76: // BIT 6,(HL) (Z 0 1 -)
+        case 0x77: // BIT 6,A (Z 0 1 -)
+
+        case 0x78: // BIT 7,B (Z 0 1 -)
+        case 0x79: // BIT 7,C (Z 0 1 -)
+        case 0x7A: // BIT 7,D (Z 0 1 -)
+        case 0x7B: // BIT 7,E (Z 0 1 -)
+        case 0x7C: // BIT 7,H (Z 0 1 -)
+        case 0x7D: // BIT 7,L (Z 0 1 -)
+        case 0x7E: // BIT 7,(HL) (Z 0 1 -)
+        case 0x7F:{// BIT 7,A (Z 0 1 -)
+            U8 bit_number = (cb_instr - 0x40) / 8;
+            U8 bit_mask = (0x01 << bit_number);
+            r->set_zero_flag((operand & bit_mask) == 0);
+            r->set_subtract_flag(0);
+            r->set_halfcarry_flag(1);
+            break;}
+
+        case 0x80: // RES 0,B (- - - -)
+        case 0x81: // RES 0,C (- - - -)
+        case 0x82: // RES 0,D (- - - -)
+        case 0x83: // RES 0,E (- - - -)
+        case 0x84: // RES 0,H (- - - -)
+        case 0x85: // RES 0,L (- - - -)
+        case 0x86: // RES 0,(HL) (- - - -)
+        case 0x87: // RES 0,A (- - - -)
+
+        case 0x88: // RES 1,B (- - - -)
+        case 0x89: // RES 1,C (- - - -)
+        case 0x8A: // RES 1,D (- - - -)
+        case 0x8B: // RES 1,E (- - - -)
+        case 0x8C: // RES 1,H (- - - -)
+        case 0x8D: // RES 1,L (- - - -)
+        case 0x8E: // RES 1,(HL) (- - - -)
+        case 0x8F: // RES 1,A (- - - -)
+
+        case 0x90: // RES 2,B (- - - -)
+        case 0x91: // RES 2,C (- - - -)
+        case 0x92: // RES 2,D (- - - -)
+        case 0x93: // RES 2,E (- - - -)
+        case 0x94: // RES 2,H (- - - -)
+        case 0x95: // RES 2,L (- - - -)
+        case 0x96: // RES 2,(HL) (- - - -)
+        case 0x97: // RES 2,A (- - - -)
+
+        case 0x98: // RES 3,B (- - - -)
+        case 0x99: // RES 3,C (- - - -)
+        case 0x9A: // RES 3,D (- - - -)
+        case 0x9B: // RES 3,E (- - - -)
+        case 0x9C: // RES 3,H (- - - -)
+        case 0x9D: // RES 3,L (- - - -)
+        case 0x9E: // RES 3,(HL) (- - - -)
+        case 0x9F: // RES 3,A (- - - -)
+
+        case 0xA0: // RES 4,B (- - - -)
+        case 0xA1: // RES 4,C (- - - -)
+        case 0xA2: // RES 4,D (- - - -)
+        case 0xA3: // RES 4,E (- - - -)
+        case 0xA4: // RES 4,H (- - - -)
+        case 0xA5: // RES 4,L (- - - -)
+        case 0xA6: // RES 4,(HL) (- - - -)
+        case 0xA7: // RES 4,A (- - - -)
+
+        case 0xA8: // RES 5,B (- - - -)
+        case 0xA9: // RES 5,C (- - - -)
+        case 0xAA: // RES 5,D (- - - -)
+        case 0xAB: // RES 5,E (- - - -)
+        case 0xAC: // RES 5,H (- - - -)
+        case 0xAD: // RES 5,L (- - - -)
+        case 0xAE: // RES 5,(HL) (- - - -)
+        case 0xAF: // RES 5,A (- - - -)
+
+        case 0xB0: // RES 6,B (- - - -)
+        case 0xB1: // RES 6,C (- - - -)
+        case 0xB2: // RES 6,D (- - - -)
+        case 0xB3: // RES 6,E (- - - -)
+        case 0xB4: // RES 6,H (- - - -)
+        case 0xB5: // RES 6,L (- - - -)
+        case 0xB6: // RES 6,(HL) (- - - -)
+        case 0xB7: // RES 6,A (- - - -)
+
+        case 0xB8: // RES 7,B (- - - -)
+        case 0xB9: // RES 7,C (- - - -)
+        case 0xBA: // RES 7,D (- - - -)
+        case 0xBB: // RES 7,E (- - - -)
+        case 0xBC: // RES 7,H (- - - -)
+        case 0xBD: // RES 7,L (- - - -)
+        case 0xBE: // RES 7,(HL) (- - - -)
+        case 0xBF:{// RES 7,A (- - - -)
+            U8 bit_number = (cb_instr - 0x80) / 8;
+            U8 bit_mask = (0x01 << bit_number);
+            operand &= ~bit_mask;
+            break;}
+
+        case 0xC0: // SET 0,B (- - - -)
+        case 0xC1: // SET 0,C (- - - -)
+        case 0xC2: // SET 0,D (- - - -)
+        case 0xC3: // SET 0,E (- - - -)
+        case 0xC4: // SET 0,H (- - - -)
+        case 0xC5: // SET 0,L (- - - -)
+        case 0xC6: // SET 0,(HL) (- - - -)
+        case 0xC7: // SET 0,A (- - - -)
+
+        case 0xC8: // SET 1,B (- - - -)
+        case 0xC9: // SET 1,C (- - - -)
+        case 0xCA: // SET 1,D (- - - -)
+        case 0xCB: // SET 1,E (- - - -)
+        case 0xCC: // SET 1,H (- - - -)
+        case 0xCD: // SET 1,L (- - - -)
+        case 0xCE: // SET 1,(HL) (- - - -)
+        case 0xCF: // SET 1,A (- - - -)
+
+        case 0xD0: // SET 2,B (- - - -)
+        case 0xD1: // SET 2,C (- - - -)
+        case 0xD2: // SET 2,D (- - - -)
+        case 0xD3: // SET 2,E (- - - -)
+        case 0xD4: // SET 2,H (- - - -)
+        case 0xD5: // SET 2,L (- - - -)
+        case 0xD6: // SET 2,(HL) (- - - -)
+        case 0xD7: // SET 2,A (- - - -)
+
+        case 0xD8: // SET 3,B (- - - -)
+        case 0xD9: // SET 3,C (- - - -)
+        case 0xDA: // SET 3,D (- - - -)
+        case 0xDB: // SET 3,E (- - - -)
+        case 0xDC: // SET 3,H (- - - -)
+        case 0xDD: // SET 3,L (- - - -)
+        case 0xDE: // SET 3,(HL) (- - - -)
+        case 0xDF: // SET 3,A (- - - -)
+
+        case 0xE0: // SET 4,B (- - - -)
+        case 0xE1: // SET 4,C (- - - -)
+        case 0xE2: // SET 4,D (- - - -)
+        case 0xE3: // SET 4,E (- - - -)
+        case 0xE4: // SET 4,H (- - - -)
+        case 0xE5: // SET 4,L (- - - -)
+        case 0xE6: // SET 4,(HL) (- - - -)
+        case 0xE7: // SET 4,A (- - - -)
+
+        case 0xE8: // SET 5,B (- - - -)
+        case 0xE9: // SET 5,C (- - - -)
+        case 0xEA: // SET 5,D (- - - -)
+        case 0xEB: // SET 5,E (- - - -)
+        case 0xEC: // SET 5,H (- - - -)
+        case 0xED: // SET 5,L (- - - -)
+        case 0xEE: // SET 5,(HL) (- - - -)
+        case 0xEF: // SET 5,A (- - - -)
+
+        case 0xF0: // SET 6,B (- - - -)
+        case 0xF1: // SET 6,C (- - - -)
+        case 0xF2: // SET 6,D (- - - -)
+        case 0xF3: // SET 6,E (- - - -)
+        case 0xF4: // SET 6,H (- - - -)
+        case 0xF5: // SET 6,L (- - - -)
+        case 0xF6: // SET 6,(HL) (- - - -)
+        case 0xF7: // SET 6,A (- - - -)
+
+        case 0xF8: // SET 7,B (- - - -)
+        case 0xF9: // SET 7,C (- - - -)
+        case 0xFA: // SET 7,D (- - - -)
+        case 0xFB: // SET 7,E (- - - -)
+        case 0xFC: // SET 7,H (- - - -)
+        case 0xFD: // SET 7,L (- - - -)
+        case 0xFE: // SET 7,(HL) (- - - -)
+        case 0xFF:{// SET 7,A (- - - -)
+            U8 bit_number = (cb_instr - 0xC0) / 8;
+            U8 bit_mask = (0x01 << bit_number);
+            operand |= bit_mask;
+            break;}
+    }
+
+    emu_cb_write(emu, cb_instr, operand);
+}
+
+void debug_print_instruction(U8* instr, U16 pc) {
+    // instruction address
+    printf("%0.4X: ", pc);
+
+    if(instr[0] == 0xCB){
+        // pseudo ASM
+        printf("%s", CPU::CBPrefixedOpcodes[instr[1]].description);
+    } else {
+        const CPU::OpcodeDesc& opcode = CPU::Opcodes[instr[0]];
+        // pseudo ASM
+        printf("0x%0.2X %s ", (unsigned)*instr, opcode.description);
+
+        // direct operands
+        switch(opcode.byte_length){
+            case 2:
+                printf("[0x%0.2X]", instr[1]);
+                break;
+            case 3:
+                printf("[0x%0.2X%0.2X]", instr[2], instr[1]);
+            default:
+                //pass
+                break;
+        }
+
+    }
+
+    printf("\n");
 }
 
 // returns number of cycles used
@@ -224,20 +740,10 @@ U8 emu_apply_next_instruction(Emulator* emu) {
 #   define JUMP_TO(ADDRESS) do{ jump = 1; jump_addr = (ADDRESS); }while(0)
 #   define DIRECT_U16 (*((U16*)(&instr[1])))
 #   define DIRECT_U8 (instr[1])
+#   define DIRECT_S8 ((S8)(instr[1]))
 #   define READ_HL emu_mem_read<U8>(emu, r->hl)
 
-    printf("%0.4X: %s ", r->pc, opcode->description);
-    switch(opcode->byte_length){
-        case 2:
-            printf("[0x%0.2X]", DIRECT_U8);
-            break;
-        case 3:
-            printf("[0x%0.4X]", DIRECT_U16);
-        default:
-            //pass
-            break;
-    }
-    printf("\n");
+    debug_print_instruction(instr, r->pc);
 
     switch(instr[0]){
 
@@ -290,25 +796,10 @@ U8 emu_apply_next_instruction(Emulator* emu) {
 
         case 0x07:{// RLCA (0 0 0 C)
             //TODO: resolve conlflicting specs on how to set zero flag
-            /*
-                Bitwise cycle left.
-                Old high bit (7) becomes the new low bit (0).
-                Old high bit (7) also gets stored in the carry flag.
-              
-                        +---------------------------------+
-                        |                                 |
-                        |                                 v
-                +---+   |   +---+---+---+---+---+---+---+---+
-                | C |<--+---| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
-                +---+       +---+---+---+---+---+---+---+---+
-
-             */
-            U8 high_bit = (r->a & 0x80); //remember high bit
-            r->a = (r->a << 1) | (high_bit >> 7);
             r->set_zero_flag(0);
             r->set_subtract_flag(0);
             r->set_halfcarry_flag(0);
-            r->set_carry_flag(high_bit); // high bit goes into carry
+            rlc(&r->a, r);
             break;}
 
         case 0x08: // LD (a16),SP (- - - -)
@@ -351,24 +842,10 @@ U8 emu_apply_next_instruction(Emulator* emu) {
 
         case 0x0F:{// RRCA (0 0 0 C)
             //TODO: resolve conlflicting specs on how to set zero flag
-            /*
-                Bitwise rotate A right.
-                Old low bit (0) becomes the new high bit (7).
-                Old low bit (0) to the carry flag.
-
-                  +-----+---------------------------------+
-                  |     |                                 |
-                  v     |                                 |
-                +---+   |   +---+---+---+---+---+---+---+---+
-                | C |   +-->| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
-                +---+       +---+---+---+---+---+---+---+---+
-             */
-            U8 low_bit = (r->a & 0x01);
-            r->a = (r->a >> 1) | (low_bit << 7);
             r->set_zero_flag(0);
             r->set_subtract_flag(0);
             r->set_halfcarry_flag(0);
-            r->set_carry_flag(low_bit);
+            rrc(&r->a, r);
             break;}
 
         case 0x10: // STOP 0 (- - - -)
@@ -401,29 +878,15 @@ U8 emu_apply_next_instruction(Emulator* emu) {
 
         case 0x17:{// RLA (0 0 0 C)
             //TODO: resolve conlflicting specs on how to set zero flag
-            /*
-                Bitwise rotate A left through carry flag.
-                Old high bit (7) becomes the new carry flag.
-                Old carry flag becomes the new low bit (0).
-
-                  +---------------------------------------+
-                  |                                       |
-                  |                                       v
-                +---+       +---+---+---+---+---+---+---+---+
-                | C |<------| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
-                +---+       +---+---+---+---+---+---+---+---+
-             */
-            U8 old_carry_low_bit = (r->carry_flag() ? 0x01 : 0x00);
-            U8 old_high_bit = (r->a & 0x80);
-            r->a = (r->a << 1) | old_carry_low_bit;
             r->set_zero_flag(0);
             r->set_subtract_flag(0);
             r->set_halfcarry_flag(0);
-            r->set_carry_flag(old_high_bit);
+            rl(&r->a, r);
             break;}
 
         case 0x18: // JR r8 (- - - -)
-            JUMP_TO(r->pc + (U16)DIRECT_U8);
+            //TODO: check all the jumps to see which should be _signed_ offsets
+            JUMP_TO(r->pc + DIRECT_S8);
             break;
 
         case 0x19: // ADD HL,DE (- 0 H C)
@@ -452,31 +915,16 @@ U8 emu_apply_next_instruction(Emulator* emu) {
 
         case 0x1F:{// RRA (0 0 0 C)
             //TODO: resolve conlflicting specs on how to set zero flag
-            /*
-                Bitwise rotate A right through carry flag.
-                Old low bit (0) becomes the new carry flag.
-                Old carry flag becomes the new high bit (7).
-
-                  +---------------------------------------+
-                  |                                       |
-                  v                                       |
-                +---+       +---+---+---+---+---+---+---+---+
-                | C |------>| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
-                +---+       +---+---+---+---+---+---+---+---+
-             */
-            U8 old_low_bit = (r->a & 0x01);
-            U8 old_carry = (r->carry_flag() ? 0x80 : 0x00);
-            r->a = (r->a >> 1) | old_carry;
             r->set_zero_flag(0);
             r->set_subtract_flag(0);
             r->set_halfcarry_flag(0);
-            r->set_carry_flag(old_low_bit);
-        break;}
+            rr(&r->a, r);
+            break;}
 
         case 0x20: // JR NZ,r8 (- - - -)
             if(!r->zero_flag()){
                 additional_cycles = 4;
-                JUMP_TO(r->pc + DIRECT_U8);
+                JUMP_TO(r->pc + DIRECT_S8 + opcode->byte_length);
             }
             break;
 
@@ -520,23 +968,26 @@ U8 emu_apply_next_instruction(Emulator* emu) {
              If the second addition was needed, the C flag is set after execution, 
              otherwise it is reset.
              */
+            U8 correction = 0;
+
+            //lower nibble
             if((r->a & 0x0F) > 0x09 || r->halfcarry_flag()){
-                if(r->subtract_flag()){
-                    r->a -= 0x06;
-                } else {
-                    r->a += 0x06;
-                }
+                correction |= 0x06;
             }
 
-            if((r->a & 0xF0) > 0x90 || r->carry_flag()){
-                if(r->subtract_flag()){
-                    r->a -= 0x60;
-                } else {
-                    r->a += 0x60;
-                }
+            //upper nibble
+            if((r->a & 0xF0) > 0x99 || r->carry_flag()){
+                correction |= 0x60;
                 r->set_carry_flag(1);
             } else {
                 r->set_carry_flag(0);
+            }
+
+            //apply correction
+            if(r->subtract_flag()){
+                r->a -= correction;
+            } else {
+                r->a += correction;
             }
 
             r->set_zero_flag((r->a == 0));
@@ -546,7 +997,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x28: // JR Z,r8 (- - - -)
             if(r->zero_flag()){
                 additional_cycles = 4;
-                JUMP_TO(r->pc + DIRECT_U8);
+                JUMP_TO(r->pc + DIRECT_S8);
             }
             break;
 
@@ -584,7 +1035,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x30: // JR NC,r8 (- - - -)
             if(!r->carry_flag()){
                 additional_cycles = 4;
-                JUMP_TO(r->pc + DIRECT_U8);
+                JUMP_TO(r->pc + DIRECT_S8);
             }
             break;
 
@@ -632,7 +1083,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x38: // JR C,r8 (- - - -)
             if(r->carry_flag()){
                 additional_cycles = 4;
-                JUMP_TO(r->pc + DIRECT_U8);
+                JUMP_TO(r->pc + DIRECT_S8);
             }
             break;
 
@@ -1219,9 +1670,11 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             }
             break;
 
-        case 0xCB: // PREFIX CB
-            //TODO: implement the other 256 opcodes with the CB prefix
-            break;
+        case 0xCB:{// PREFIX CB
+            U8 cb_instr = DIRECT_U8;
+            emu_cb_instruction(emu, cb_instr);
+            additional_cycles = CPU::CBPrefixedOpcodes[cb_instr].cycles;
+            break;}
 
         case 0xCC: // CALL Z,a16 (- - - -)
             CONDITIONAL_CALL_IMPL(r->zero_flag(), DIRECT_U16);
@@ -1527,8 +1980,11 @@ int main(int argc, const char * argv[]) {
     test(emu);
 
     for(;;){
+        if(emu->registers.pc == 0x0027){
+            printf("BREAK\n");
+        }
         emu_step(emu);
-        std::this_thread::sleep_for(std::chrono::seconds(2));
+//        std::this_thread::sleep_for(std::chrono::seconds(2));
     }
 }
 
