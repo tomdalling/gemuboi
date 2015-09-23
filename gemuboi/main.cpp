@@ -200,6 +200,7 @@ unsigned u16_add_will_carry(U16 hl, U16 operand) {
     return (promoted > 0x0000FFFF);
 }
 
+// (Z 0 H C)
 void add_a_impl(U8 operand, BOOL32 add_carry, CPU::Registers* r) {
     if(add_carry && r->carry_flag())
         operand += 1;
@@ -211,6 +212,7 @@ void add_a_impl(U8 operand, BOOL32 add_carry, CPU::Registers* r) {
     r->set_zero_flag(r->a == 0);
 }
 
+// (Z 1 H C)
 void sub_a_impl(U8 operand, BOOL32 sub_carry, CPU::Registers* r) {
     if(sub_carry && r->carry_flag())
         operand += 1;
@@ -222,6 +224,7 @@ void sub_a_impl(U8 operand, BOOL32 sub_carry, CPU::Registers* r) {
     r->set_zero_flag(r->a == 0);
 }
 
+// (Z 1 H C)
 void cp_a_impl(U8 operand, CPU::Registers* r) {
     /*
      Compare A with n. This is basically an A - n subtraction instruction
@@ -233,6 +236,7 @@ void cp_a_impl(U8 operand, CPU::Registers* r) {
     r->set_carry_flag(sub_will_borrow(r->a, operand));
 }
 
+// (Z 0 0 0)
 void and_a_impl(U8 operand, CPU::Registers* r) {
     r->a &= operand;
     r->set_zero_flag(r->a == 0);
@@ -241,6 +245,7 @@ void and_a_impl(U8 operand, CPU::Registers* r) {
     r->set_carry_flag(0);
 }
 
+// (Z 0 0 0)
 void or_a_impl(U8 operand, CPU::Registers* r) {
     r->a |= operand;
     r->set_zero_flag(r->a == 0);
@@ -249,12 +254,29 @@ void or_a_impl(U8 operand, CPU::Registers* r) {
     r->set_carry_flag(0);
 }
 
+// (Z 0 0 0)
 void xor_a_impl(U8 operand, CPU::Registers* r) {
     r->a ^= operand;
     r->set_zero_flag(r->a == 0);
     r->set_subtract_flag(0);
     r->set_halfcarry_flag(0);
     r->set_carry_flag(0);
+}
+
+// (Z 0 H -)
+void inc_u8_impl(U8* in_out_value, CPU::Registers* r) {
+    r->set_halfcarry_flag(add_will_halfcarry(*in_out_value, 1));
+    *in_out_value += 1;
+    r->set_zero_flag(*in_out_value == 0);
+    r->set_subtract_flag(0);
+}
+
+// (Z 1 H -)
+void dec_u8_impl(U8* in_out_value, CPU::Registers* r){
+    r->set_halfcarry_flag(sub_will_halfborrow(*in_out_value, 1));
+    *in_out_value -= 1;
+    r->set_zero_flag(*in_out_value == 0);
+    r->set_subtract_flag(1);
 }
 
 inline
@@ -827,32 +849,12 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             r->bc += 1;
             break;
 
-// increments a single 8bit register
-// assumes (Z 0 H -)
-#define INC_R_IMPL(REGISTER) \
-    do { \
-        r->set_halfcarry_flag(add_will_halfcarry((REGISTER), 1)); \
-        REGISTER += 1; \
-        r->set_zero_flag(((REGISTER) == 0)); \
-        r->set_subtract_flag(0); \
-    } while(0)
-
         case 0x04: // INC B (Z 0 H -)
-            INC_R_IMPL(r->b);
+            inc_u8_impl(&r->b, r);
             break;
 
-// decrements a single 8bit register
-// assumes (Z 1 H -)
-#define DEC_R_IMPL(REGISTER) \
-    do { \
-        r->set_halfcarry_flag(sub_will_halfborrow((REGISTER), 1));\
-        REGISTER -= 1; \
-        r->set_zero_flag(((REGISTER) == 0)); \
-        r->set_subtract_flag(1); \
-    } while(0)
-
         case 0x05: // DEC B (Z 1 H -)
-            DEC_R_IMPL(r->b);
+            dec_u8_impl(&r->b, r);
             break;
 
         case 0x06: // LD B,d8 (- - - -)
@@ -894,11 +896,11 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x0C: // INC C (Z 0 H -)
-            INC_R_IMPL(r->c);
+            inc_u8_impl(&r->c, r);
             break;
 
         case 0x0D: // DEC C (Z 1 H -)
-            DEC_R_IMPL(r->c);
+            dec_u8_impl(&r->c, r);
             break;
 
         case 0x0E: // LD C,d8 (- - - -)
@@ -930,11 +932,11 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x14: // INC D (Z 0 H -)
-            INC_R_IMPL(r->d);
+            inc_u8_impl(&r->d, r);
             break;
 
         case 0x15: // DEC D (Z 1 H -)
-            DEC_R_IMPL(r->d);
+            dec_u8_impl(&r->d, r);
             break;
 
         case 0x16: // LD D,d8 (- - - -)
@@ -967,24 +969,24 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x1C: // INC E (Z 0 H -)
-            INC_R_IMPL(r->e);
+            inc_u8_impl(&r->e, r);
             break;
 
         case 0x1D: // DEC E (Z 1 H -)
-            DEC_R_IMPL(r->e);
+            dec_u8_impl(&r->e, r);
             break;
 
         case 0x1E: // LD E,d8 (- - - -)
             r->e = DIRECT_U8;
             break;
 
-        case 0x1F:{// RRA (0 0 0 C)
+        case 0x1F: // RRA (0 0 0 C)
             //TODO: resolve conlflicting specs on how to set zero flag
             r->set_zero_flag(0);
             r->set_subtract_flag(0);
             r->set_halfcarry_flag(0);
             rr(&r->a, r);
-            break;}
+            break;
 
         case 0x20: // JR NZ,r8 (- - - -)
             if(!r->zero_flag()){
@@ -1007,11 +1009,11 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x24: // INC H (Z 0 H -)
-            INC_R_IMPL(r->h);
+            inc_u8_impl(&r->h, r);
             break;
 
         case 0x25: // DEC H (Z 1 H -)
-            DEC_R_IMPL(r->e);
+            dec_u8_impl(&r->e, r);
             break;
 
         case 0x26: // LD H,d8 (- - - -)
@@ -1080,11 +1082,11 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x2C: // INC L (Z 0 H -)
-            INC_R_IMPL(r->l);
+            inc_u8_impl(&r->l, r);
             break;
 
         case 0x2D: // DEC L (Z 1 H -)
-            DEC_R_IMPL(r->l);
+            dec_u8_impl(&r->l, r);
             break;
 
         case 0x2E: // LD L,d8 (- - - -)
@@ -1117,23 +1119,13 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             r->sp += 1;
             break;
 
-        case 0x34:{// INC (HL) (Z 0 H -)
-            U8 old_value = READ_HL;
-            U8 new_value = old_value + 1;
-            emu_mem_write(emu, r->hl, new_value);
-            r->set_zero_flag((new_value == 0));
-            r->set_subtract_flag(0);
-            r->set_halfcarry_flag(add_will_halfcarry(old_value, 1));
-            break;}
+        case 0x34: // INC (HL) (Z 0 H -)
+            inc_u8_impl((U8*)emu_address(emu, r->hl), r);
+            break;
 
-        case 0x35:{// DEC (HL) (Z 1 H -)
-            U8 old_value = READ_HL;
-            U8 new_value = old_value - 1;
-            emu_mem_write(emu, r->hl, new_value);
-            r->set_zero_flag((new_value == 0));
-            r->set_subtract_flag(1);
-            r->set_halfcarry_flag(sub_will_halfborrow(old_value, 1));
-            break;}
+        case 0x35: // DEC (HL) (Z 1 H -)
+            dec_u8_impl((U8*)emu_address(emu, r->hl), r);
+            break;
 
         case 0x36: // LD (HL),d8 (- - - -)
             emu_mem_write(emu, r->hl, DIRECT_U8);
@@ -1166,11 +1158,11 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x3C: // INC A (Z 0 H -)
-            INC_R_IMPL(r->a);
+            inc_u8_impl(&r->a, r);
             break;
 
         case 0x3D: // DEC A (Z 1 H -)
-            DEC_R_IMPL(r->a);
+            dec_u8_impl(&r->a, r);
             break;
 
         case 0x3E: // LD A,d8 (- - - -)
