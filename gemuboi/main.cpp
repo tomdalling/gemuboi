@@ -153,6 +153,16 @@ struct Emulator {
         return (mem_read<U8>(BootstrapRomFlagAddress) == BootstrapRomFlag_Enabled);
     }
 
+    U16 stack_pop() {
+        U16 retval = mem_read<U16>(registers.sp);
+        registers.sp += 2;
+        return retval;
+    }
+
+    void stack_push(U16 value) {
+        registers.sp -= 2;
+        mem_write(registers.sp, value);
+    }
 };
 
 void emu_init(Emulator* emu) {
@@ -366,18 +376,6 @@ void rl(U8* in_out_value, CPU::Registers* registers) {
     U8 old_high_bit = (*in_out_value & 0x80);
     *in_out_value = (*in_out_value << 1) | old_carry;
     registers->set_carry_flag(old_high_bit);
-}
-
-
-U16 emu_stack_pop(Emulator* emu) {
-    U16 retval = emu->mem_read<U16>(emu->registers.sp);
-    emu->registers.sp += 2;
-    return retval;
-}
-
-void emu_stack_push(Emulator* emu, U16 value) {
-    emu->registers.sp -= 2;
-    emu->mem_write(emu->registers.sp, value);
 }
 
 U8 emu_standard_operand_read(Emulator* emu, U8 opcode) {
@@ -1349,18 +1347,32 @@ U8 emu_apply_next_instruction(Emulator* emu) {
 //Pop two bytes from stack & jump to that address.
 #define RET_IMPL \
     do { \
-        r->pc = emu_stack_pop(emu); \
+        r->pc = emu->stack_pop(); \
+    } while(0)
+
+#define CONDITIONAL_RET_IMPL(CONDITION) \
+    do { \
+        if(CONDITION) { \
+            additional_cycles += 12; \
+            RET_IMPL; \
+        } \
     } while(0)
 
         case 0xC0: // RET NZ (- - - -)
-            if(!r->zero_flag()){
-                additional_cycles += 12;
-                RET_IMPL;
-            }
+            CONDITIONAL_RET_IMPL(!r->zero_flag());
+            break;
+        case 0xC8: // RET Z (- - - -)
+            CONDITIONAL_RET_IMPL(r->zero_flag());
+            break;
+        case 0xD0: // RET NC (- - - -)
+            CONDITIONAL_RET_IMPL(!r->carry_flag());
+            break;
+        case 0xD8: // RET C (- - - -)
+            CONDITIONAL_RET_IMPL(r->carry_flag());
             break;
 
         case 0xC1: // POP BC (- - - -)
-            r->bc = emu_stack_pop(emu);
+            r->bc = emu->stack_pop();
             break;
 
         case 0xC2: // JP NZ,a16 (- - - -)
@@ -1376,7 +1388,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
 
 #define CALL_IMPL(ADDRESS) \
     do { \
-        emu_stack_push(emu, r->pc); \
+        emu->stack_push(r->pc); \
         r->pc = ADDRESS; \
     } while(0)
 
@@ -1389,29 +1401,25 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         } \
     } while(0)
 
-
         case 0xC4: // CALL NZ,a16 (- - - -)
             CONDITIONAL_CALL_IMPL(!r->zero_flag(), direct_u16);
             break;
+        case 0xCC: // CALL Z,a16 (- - - -)
+            CONDITIONAL_CALL_IMPL(r->zero_flag(), direct_u16);
+            break;
+        case 0xD4: // CALL NC,a16 (- - - -)
+            CONDITIONAL_CALL_IMPL(!r->carry_flag(), direct_u16);
+            break;
+        case 0xDC: // CALL C,a16 (- - - -)
+            CONDITIONAL_CALL_IMPL(r->carry_flag(), direct_u16);
+            break;
 
         case 0xC5: // PUSH BC (- - - -)
-            emu_stack_push(emu, r->bc);
+            emu->stack_push(r->bc);
             break;
 
         case 0xC6: // ADD A,d8 (Z 0 H C)
             add_a_impl(direct_u8, False, r);
-            break;
-
-        case 0xC7: // RST 00H (- - - -)
-            emu_stack_push(emu, r->pc);
-            r->pc = 0x0000;
-            break;
-
-        case 0xC8: // RET Z (- - - -)
-            if(r->zero_flag()){
-                additional_cycles = 12;
-                RET_IMPL;
-            }
             break;
 
         case 0xC9: // RET (- - - -)
@@ -1431,10 +1439,6 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             additional_cycles = CPU::CBPrefixedOpcodes[cb_opcode].cycles;
             break;}
 
-        case 0xCC: // CALL Z,a16 (- - - -)
-            CONDITIONAL_CALL_IMPL(r->zero_flag(), direct_u16);
-            break;
-
         case 0xCD: // CALL a16 (- - - -)
             CALL_IMPL(direct_u16);
             break;
@@ -1443,20 +1447,8 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             add_a_impl(direct_u8, True, r);
             break;
 
-        case 0xCF: // RST 08H (- - - -)
-            emu_stack_push(emu, r->pc);
-            r->pc = 0x0008;
-            break;
-
-        case 0xD0: // RET NC (- - - -)
-            if(!r->carry_flag()){
-                additional_cycles = 12;
-                RET_IMPL;
-            }
-            break;
-
         case 0xD1: // POP DE (- - - -)
-            r->de = emu_stack_pop(emu);
+            r->de = emu->stack_pop();
             break;
 
         case 0xD2: // JP NC,a16 (- - - -)
@@ -1466,31 +1458,12 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             }
             break;
 
-        case 0xD3: // INVALID_INSTRUCTION
-            break;
-
-        case 0xD4: // CALL NC,a16 (- - - -)
-            CONDITIONAL_CALL_IMPL(!r->carry_flag(), direct_u16);
-            break;
-
         case 0xD5: // PUSH DE (- - - -)
-            emu_stack_push(emu, r->de);
+            emu->stack_push(r->de);
             break;
 
         case 0xD6: // SUB d8 (Z 1 H C)
             sub_a_impl(direct_u8, False, r);
-            break;
-
-        case 0xD7: // RST 10H (- - - -)
-            emu_stack_push(emu, r->pc);
-            r->pc = 0x0010;
-            break;
-
-        case 0xD8: // RET C (- - - -)
-            if(r->carry_flag()){
-                additional_cycles = 12;
-                RET_IMPL;
-            }
             break;
 
         case 0xD9: // RETI (- - - -)
@@ -1505,23 +1478,8 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             }
             break;
 
-        case 0xDB: // INVALID_INSTRUCTION
-            break;
-
-        case 0xDC: // CALL C,a16 (- - - -)
-            CONDITIONAL_CALL_IMPL(r->carry_flag(), direct_u16);
-            break;
-
-        case 0xDD: // INVALID_INSTRUCTION
-            break;
-
         case 0xDE: // SBC A,d8 (Z 1 H C)
             sub_a_impl(direct_u8, True, r);
-            break;
-
-        case 0xDF: // RST 18H (- - - -)
-            emu_stack_push(emu, r->pc);
-            r->pc = 0x0018;
             break;
 
         case 0xE0: // LDH (a8),A (- - - -)
@@ -1529,29 +1487,20 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0xE1: // POP HL (- - - -)
-            r->hl = emu_stack_pop(emu);
+            r->hl = emu->stack_pop();
             break;
 
         case 0xE2: // LD (C),A (- - - -)
             emu->mem_write(0xFF00 + (U16)r->c, r->a);
             break;
 
-        case 0xE3: // INVALID_INSTRUCTION
-            break;
-        case 0xE4: // INVALID_INSTRUCTION
-            break;
 
         case 0xE5: // PUSH HL (- - - -)
-            emu_stack_push(emu, r->hl);
+            emu->stack_push(r->hl);
             break;
 
         case 0xE6: // AND d8 (Z 0 1 0)
             and_a_impl(direct_u8, r);
-            break;
-
-        case 0xE7: // RST 20H (- - - -)
-            emu_stack_push(emu, r->pc);
-            r->pc = 0x0020;
             break;
 
         case 0xE8:{// ADD SP,r8 (0 0 H C)
@@ -1572,20 +1521,8 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             emu->mem_write(direct_u16, r->a);
             break;
 
-        case 0xEB: // INVALID_INSTRUCTION
-            break;
-        case 0xEC: // INVALID_INSTRUCTION
-            break;
-        case 0xED: // INVALID_INSTRUCTION
-            break;
-
         case 0xEE: // XOR d8 (Z 0 0 0)
             xor_a_impl(direct_u8, r);
-            break;
-
-        case 0xEF: // RST 28H (- - - -)
-            emu_stack_push(emu, r->pc);
-            r->pc = 0x0028;
             break;
 
         case 0xF0: // LDH A,(a8) (- - - -)
@@ -1594,7 +1531,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
 
         case 0xF1: // POP AF (Z N H C)
             // all flags set by virtue of setting r->f
-            r->af = emu_stack_pop(emu);
+            r->af = emu->stack_pop();
             break;
 
         case 0xF2: // LD A,(C)
@@ -1611,20 +1548,12 @@ U8 emu_apply_next_instruction(Emulator* emu) {
              */
             break;
 
-        case 0xF4: // INVALID_INSTRUCTION
-            break;
-
         case 0xF5: // PUSH AF (- - - -)
-            emu_stack_push(emu, r->af);
+            emu->stack_push(r->af);
             break;
 
         case 0xF6: // OR d8 (Z 0 0 0)
             or_a_impl(direct_u8, r);
-            break;
-
-        case 0xF7: // RST 30H (- - - -)
-            emu_stack_push(emu, r->pc);
-            r->pc = 0x0030;
             break;
 
         case 0xF8:{// LD HL,SP+r8 (0 0 H C)
@@ -1655,18 +1584,33 @@ U8 emu_apply_next_instruction(Emulator* emu) {
              */
             break;
 
-        case 0xFC: // INVALID_INSTRUCTION
-            break;
-        case 0xFD: // INVALID_INSTRUCTION
-            break;
-
         case 0xFE: // CP d8 (Z 1 H C)
             cp_a_impl(direct_u8, r);
             break;
 
-        case 0xFF: // RST 38H
-            emu_stack_push(emu, r->pc);
-            r->pc = 0x0038;
+        case 0xD3: // INVALID_INSTRUCTION
+        case 0xDB: // INVALID_INSTRUCTION
+        case 0xDD: // INVALID_INSTRUCTION
+        case 0xE3: // INVALID_INSTRUCTION
+        case 0xE4: // INVALID_INSTRUCTION
+        case 0xEB: // INVALID_INSTRUCTION
+        case 0xEC: // INVALID_INSTRUCTION
+        case 0xED: // INVALID_INSTRUCTION
+        case 0xF4: // INVALID_INSTRUCTION
+        case 0xFC: // INVALID_INSTRUCTION
+        case 0xFD: // INVALID_INSTRUCTION
+            break;
+
+        case 0xC7: // RST 0x00 (- - - -)
+        case 0xCF: // RST 0x08 (- - - -)
+        case 0xD7: // RST 0x10 (- - - -)
+        case 0xDF: // RST 0x18 (- - - -)
+        case 0xE7: // RST 0x20 (- - - -)
+        case 0xEF: // RST 0x28 (- - - -)
+        case 0xF7: // RST 0x30 (- - - -)
+        case 0xFF: // RST 0x38 (- - - -)
+            emu->stack_push(r->pc);
+            r->pc = opcode - 0xC7;
             break;
     }
 
