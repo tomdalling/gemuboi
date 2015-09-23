@@ -3,6 +3,23 @@
 #include "types.hpp"
 
 namespace CPU {
+    /*
+     Flag register (F) bits:
+
+        7	6	5	4	3	2	1	0
+        Z	N	H	C	0	0	0	0
+
+        Z - Zero Flag
+        N - Subtract Flag
+        H - Half Carry Flag
+        C - Carry Flag
+        0 - Not used, always zero
+    */
+    const U8 FlagMask_Zero = 0x80;
+    const U8 FlagMask_Subtract = 0x40;
+    const U8 FlagMask_HalfCarry = 0x20;
+    const U8 FlagMask_Carry = 0x10;
+
     struct Registers {
         union {
             U16 af; // accumulator/flags
@@ -22,23 +39,6 @@ namespace CPU {
         };
         U16 sp; // stack pointer
         U16 pc; // program counter
-
-        /*
-         Flag register (F) bits:
-
-            7	6	5	4	3	2	1	0
-            Z	N	H	C	0	0	0	0
-
-            Z - Zero Flag
-            N - Subtract Flag
-            H - Half Carry Flag
-            C - Carry Flag
-            0 - Not used, always zero
-        */
-        const U8 FlagMask_Zero = 0x80;
-        const U8 FlagMask_Subtract = 0x40;
-        const U8 FlagMask_HalfCarry = 0x20;
-        const U8 FlagMask_Carry = 0x10;
 
         BOOL32 flag(U8 flag_mask) const { return ((f & flag_mask) == flag_mask); }
         BOOL32 zero_flag() const { return flag(FlagMask_Zero); }
