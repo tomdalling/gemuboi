@@ -737,13 +737,21 @@ U8 emu_apply_next_instruction(Emulator* emu) {
     BOOL32 jump = 0; // jump to `jump_addr` if true, otherwise step to next instr
     U16 jump_addr = 0;
 
+    /*
+     Step to next instruction.
+     
+     NB: This _must_ happen before the instruction is actually executed. All instructions assume
+         that PC is the address of the _next_ instruction.
+     */
+    r->pc += opcode->byte_length;
+
+    debug_print_instruction(instr, r->pc);
+
 #   define JUMP_TO(ADDRESS) do{ jump = 1; jump_addr = (ADDRESS); }while(0)
 #   define DIRECT_U16 (*((U16*)(&instr[1])))
 #   define DIRECT_U8 (instr[1])
 #   define DIRECT_S8 ((S8)(instr[1]))
 #   define READ_HL emu_mem_read<U8>(emu, r->hl)
-
-    debug_print_instruction(instr, r->pc);
 
     switch(instr[0]){
 
@@ -924,7 +932,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
         case 0x20: // JR NZ,r8 (- - - -)
             if(!r->zero_flag()){
                 additional_cycles = 4;
-                JUMP_TO(r->pc + DIRECT_S8 + opcode->byte_length);
+                JUMP_TO(r->pc + DIRECT_S8);
             }
             break;
 
@@ -1621,7 +1629,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
 
 #define CALL_IMPL(ADDRESS) \
     do { \
-        emu_stack_push(emu, r->pc + opcode->byte_length); \
+        emu_stack_push(emu, r->pc); \
         JUMP_TO(ADDRESS); \
     } while(0)
 
@@ -1914,13 +1922,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
     }
 
-    if(jump){
-        // jump to an arbitrary address
-        r->pc = jump_addr;
-    } else {
-        // step to next instruction
-        r->pc += opcode->byte_length;
-    }
+    if(jump) r->pc = jump_addr;
     return opcode->cycles + additional_cycles;
 
 #   undef DIRECT_U16
