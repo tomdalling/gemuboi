@@ -29,6 +29,8 @@
 		E212FDC91BB0E9F8007E74AF /* cpu.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = cpu.hpp; sourceTree = "<group>"; };
 		E212FDCA1BB2F775007E74AF /* emulator.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = emulator.hpp; sourceTree = "<group>"; };
 		E212FDCB1BB2F846007E74AF /* emulator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = emulator.cpp; sourceTree = "<group>"; };
+		E212FDCD1BB3C239007E74AF /* video.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = video.hpp; sourceTree = "<group>"; };
+		E212FDCE1BB3C624007E74AF /* timer.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = timer.hpp; sourceTree = "<group>"; };
 		E2D69FFC1BAAAD7700B71FC2 /* gemuboi */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = gemuboi; sourceTree = BUILT_PRODUCTS_DIR; };
 		E2D69FFF1BAAAD7700B71FC2 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -69,6 +71,8 @@
 				E2D69FFF1BAAAD7700B71FC2 /* main.cpp */,
 				E212FDCA1BB2F775007E74AF /* emulator.hpp */,
 				E212FDCB1BB2F846007E74AF /* emulator.cpp */,
+				E212FDCD1BB3C239007E74AF /* video.hpp */,
+				E212FDCE1BB3C624007E74AF /* timer.hpp */,
 			);
 			path = gemuboi;
 			sourceTree = "<group>";
