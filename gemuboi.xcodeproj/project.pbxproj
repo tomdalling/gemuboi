@@ -33,6 +33,7 @@
 		E212FDCD1BB3C239007E74AF /* video.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = video.hpp; sourceTree = "<group>"; };
 		E212FDCE1BB3C624007E74AF /* timer.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = timer.hpp; sourceTree = "<group>"; };
 		E27674B31BB67FCD00A9A0F8 /* timer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = timer.cpp; sourceTree = "<group>"; };
+		E27674B51BB6C4E800A9A0F8 /* hardware_registers.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = hardware_registers.hpp; sourceTree = "<group>"; };
 		E2D69FFC1BAAAD7700B71FC2 /* gemuboi */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = gemuboi; sourceTree = BUILT_PRODUCTS_DIR; };
 		E2D69FFF1BAAAD7700B71FC2 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -76,6 +77,7 @@
 				E212FDCD1BB3C239007E74AF /* video.hpp */,
 				E212FDCE1BB3C624007E74AF /* timer.hpp */,
 				E27674B31BB67FCD00A9A0F8 /* timer.cpp */,
+				E27674B51BB6C4E800A9A0F8 /* hardware_registers.hpp */,
 			);
 			path = gemuboi;
 			sourceTree = "<group>";

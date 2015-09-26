@@ -10,6 +10,7 @@
 
 #include "cpu.hpp"
 #include "cart.hpp"
+#include "hardware_registers.hpp"
 
 /*
  When the Gameboy is turned on, the bootstrap ROM is situated in a memory
@@ -36,35 +37,13 @@ extern U8 BootstrapRom[BootstrapRomSize];
 
 struct Emulator {
     CPU::Registers registers;
+    HardwareRegisters::Registers hardware_registers;
     Cart::Cart cart;
-
-    /*
-     Interrupt Enable Register
-     --------------------------- FFFF
-     Internal RAM
-     --------------------------- FF80
-     Empty but unusable for I/O
-     --------------------------- FF4C
-     I/O ports
-     --------------------------- FF00
-     Empty but unusable for I/O
-     --------------------------- FEA0
-     Sprite Attrib Memory (OAM)
-     --------------------------- FE00
-     Echo of 8kB Internal RAM
-     --------------------------- E000
-     8kB Internal RAM
-     --------------------------- C000
-     8kB switchable RAM bank
-     --------------------------- A000
-     8kB Video RAM
-     ---------------------------￼ 8000 --
-     16kB switchable ROM bank          |
-     --------------------------- 4000  |= 32kB Cartrigbe
-     16kB ROM bank #0                  |
-     --------------------------- 0000 --
-     */
-    U8 memory[0xFFFF];
+    U8 video_ram[0x2000];
+    U8 cartridge_ram[0x2000];
+    U8 internal_ram[0x2000];
+    U8 zero_page[128];
+    U8 oam[160];
 
     /*
      TODO:

@@ -21,43 +21,7 @@
 namespace Timer {
     const U32 CPUClockSpeed = 4194304; //Hz
 
-    /*
-     DIV - Divider Register (R/W)
 
-     This register is incremented at rate of 16384Hz. Writing any value to this register resets it
-     to 0x00.
-     */
-    const U16 DIV = 0xFF04;
-
-    /*
-     TIMA - Timer counter (R/W)
-
-     This timer is incremented by a clock frequency specified by the TAC register ($FF07). 
-     When the value overflows (gets bigger than 0xFF) then it will be reset to the value specified
-     in TMA (FF06), and an interrupt will be requested.
-     */
-    const U16 TIMA = 0xFF05;
-
-    /*
-     TMA - Timer Modulo (R/W)
-
-     When the TIMA overflows, this data will be loaded.
-     */
-    const U16 TMA = 0xFF06; // TMA
-
-    /*
-     TAC - Timer Control (R/W)
-
-     Bit 2 - Running
-        0: Stop Timer
-        1: Start Timer
-     Bits 1+0 - Frequency
-        00:   4096 Hz
-        01: 262144 Hz
-        10:  65536 Hz
-        11:  16384 Hz
-     */
-    const U16 TAC = 0xFF07; //TAC
     const U8 TACRunningMask = 0x04; // Bit 2
     const U8 TACFrequencyMask = 0x03; // Bits 0 and 1
     const U8 TACFrequency4096 = 0x00;

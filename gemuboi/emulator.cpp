@@ -1503,6 +1503,130 @@ void emulator_step(Emulator* emu) {
     //TODO: update total cycles elapsed in emulator
 }
 
+U8 get_hardware_register(HardwareRegisters::Registers* hwr, U16 address) {
+#   define HW_REG_GET(REG_CAPS, REG_SMALL) \
+        case HardwareRegisters::REG_CAPS: \
+            return hwr->REG_SMALL;
+
+    switch(address){
+        HW_REG_GET(DIV, div)
+        HW_REG_GET(TIMA, tima)
+        HW_REG_GET(TMA, tma)
+        HW_REG_GET(TAC, tac)
+        HW_REG_GET(NR10, nr10)
+        HW_REG_GET(NR11, nr11)
+        HW_REG_GET(NR12, nr12)
+        HW_REG_GET(NR13, nr13)
+        HW_REG_GET(NR14, nr14)
+        HW_REG_GET(NR21, nr21)
+        HW_REG_GET(NR22, nr22)
+        HW_REG_GET(NR23, nr23)
+        HW_REG_GET(NR24, nr24)
+        HW_REG_GET(NR30, nr30)
+        HW_REG_GET(NR31, nr31)
+        HW_REG_GET(NR32, nr32)
+        HW_REG_GET(NR33, nr33)
+        HW_REG_GET(NR34, nr34)
+        HW_REG_GET(NR41, nr41)
+        HW_REG_GET(NR42, nr42)
+        HW_REG_GET(NR43, nr43)
+        HW_REG_GET(NR44, nr44)
+        HW_REG_GET(NR50, nr50)
+        HW_REG_GET(NR51, nr51)
+        HW_REG_GET(NR52, nr52)
+        HW_REG_GET(LCDC, lcdc)
+        HW_REG_GET(STAT, stat)
+        HW_REG_GET(SCY, scy)
+        HW_REG_GET(SCX, scx)
+        HW_REG_GET(LY, ly)
+        HW_REG_GET(LYC, lyc)
+        HW_REG_GET(DMA, dma)
+        HW_REG_GET(BGP, bgp)
+        HW_REG_GET(OBP0, obp0)
+        HW_REG_GET(OBP1, obp1)
+        HW_REG_GET(WY, wy)
+        HW_REG_GET(WX, wx)
+        HW_REG_GET(P1, p1)
+        HW_REG_GET(SB, sb)
+        HW_REG_GET(SC, sc)
+        HW_REG_GET(IF, if_)
+        HW_REG_GET(BootstrapROM, bootstrap_rom)
+        HW_REG_GET(IE, ie)
+
+        default:
+            if(HardwareRegisters::WavePatternStart <= address && address <= HardwareRegisters::WavePatternEnd){
+                return hwr->wave_pattern[address - HardwareRegisters::WavePatternStart];
+            } else {
+                assert(0); //dunno this register
+                return 0xFF;
+            }
+    }
+#   undef HW_REG_GET
+}
+
+void set_hardware_register(HardwareRegisters::Registers* hwr, U16 address, U8 value) {
+#   define HW_REG_SET(REG_CAPS, REG_SMALL) \
+        case HardwareRegisters::REG_CAPS: \
+            hwr->REG_SMALL = value; \
+            return;
+
+    switch(address){
+        case HardwareRegisters::DIV:
+            hwr->div = 0;
+            return;
+
+        HW_REG_SET(TIMA, tima)
+        HW_REG_SET(TMA, tma)
+        HW_REG_SET(TAC, tac)
+        HW_REG_SET(NR10, nr10)
+        HW_REG_SET(NR11, nr11)
+        HW_REG_SET(NR12, nr12)
+        HW_REG_SET(NR13, nr13)
+        HW_REG_SET(NR14, nr14)
+        HW_REG_SET(NR21, nr21)
+        HW_REG_SET(NR22, nr22)
+        HW_REG_SET(NR23, nr23)
+        HW_REG_SET(NR24, nr24)
+        HW_REG_SET(NR30, nr30)
+        HW_REG_SET(NR31, nr31)
+        HW_REG_SET(NR32, nr32)
+        HW_REG_SET(NR33, nr33)
+        HW_REG_SET(NR34, nr34)
+        HW_REG_SET(NR41, nr41)
+        HW_REG_SET(NR42, nr42)
+        HW_REG_SET(NR43, nr43)
+        HW_REG_SET(NR44, nr44)
+        HW_REG_SET(NR50, nr50)
+        HW_REG_SET(NR51, nr51)
+        HW_REG_SET(NR52, nr52)
+        HW_REG_SET(LCDC, lcdc)
+        HW_REG_SET(STAT, stat)
+        HW_REG_SET(SCY, scy)
+        HW_REG_SET(SCX, scx)
+        HW_REG_SET(LY, ly)
+        HW_REG_SET(LYC, lyc)
+        HW_REG_SET(DMA, dma)
+        HW_REG_SET(BGP, bgp)
+        HW_REG_SET(OBP0, obp0)
+        HW_REG_SET(OBP1, obp1)
+        HW_REG_SET(WY, wy)
+        HW_REG_SET(WX, wx)
+        HW_REG_SET(P1, p1)
+        HW_REG_SET(SB, sb)
+        HW_REG_SET(SC, sc)
+        HW_REG_SET(IF, if_)
+        HW_REG_SET(BootstrapROM, bootstrap_rom)
+        HW_REG_SET(IE, ie)
+
+        default:
+            if(HardwareRegisters::WavePatternStart <= address && address <= HardwareRegisters::WavePatternEnd){
+                hwr->wave_pattern[address - HardwareRegisters::WavePatternStart] = value;
+            } else {
+                assert(0); //dunno this register
+            }
+    }
+}
+
 U8 Emulator::mem_read(U16 address) {
     // 0x0000 - 0x3FFF: bank 0 of cart ROM (not switchable)
     if(address <= 0x3FFF) {
@@ -1522,32 +1646,23 @@ U8 Emulator::mem_read(U16 address) {
 
     // 0x8000 - 0x9FFF: video RAM
     else if(address <= 0x9FFF){
-        //TODO: implement here
-        return memory[address];
+        return video_ram[address];
     }
 
     // 0xA000 - 0xBFFF: cartrige RAM
     else if(address <= 0xBFFF) {
-        //TODO: implement here
-        return memory[address];
+        return cartridge_ram[address];
     }
 
     // 0xC000 - 0xDFFF: Internal RAM
-    else if(address <= 0xDFFF) {
-        //TODO: implement here
-        return memory[address];
-    }
-
     // 0xE000 - 0xFDFF: Echo of internal RAM
     else if(address <= 0xFDFF) {
-        //TODO: implement here
-        return memory[address - 0xE000 + 0xC000];
+        return internal_ram[address & 0x1FFF];
     }
 
-    // 0xFE00 - 0xFE9F: OAM - Object Attribute Memory
+    // 0xFE00 - 0xFE9F: OAM - Object/Sprite Attribute Memory
     else if(address <= 0xFE9F) {
-        //TODO: implement here
-        return memory[address];
+        return oam[address - 0xFE00];
     }
 
     // 0xFEA0 - 0xFEFF: Unusable Memory
@@ -1556,21 +1671,14 @@ U8 Emulator::mem_read(U16 address) {
     }
 
     // 0xFF00 - 0xFF7F: Hardware I/O Registers
-    else if(address <= 0xFF7F) {
-        //TODO: implement here
-        return memory[address];
+    // 0xFFFF: Interrupt Enable Flag
+    else if(address <= 0xFF7F || address == 0xFFFF) {
+        return get_hardware_register(&hardware_registers, address);
     }
 
     // 0xFF80 - 0xFFFE: Zero Page
     else if(address <= 0xFFFE) {
-        //TODO: implement here
-        return memory[address];
-    }
-
-    // 0xFFFF: Interrupt Enable Flag
-    else if(address == 0xFFFF) {
-        //TODO: implement here
-        return memory[address];
+        return zero_page[address];
     }
 
     else {
@@ -1589,64 +1697,45 @@ void Emulator::mem_write(U16 address, U8 value) {
 
     // 0x8000 - 0x9FFF: video RAM
     else if(address <= 0x9FFF){
-        //TODO: implement here
-        memory[address] = value;
+        video_ram[address] = value;
         return;
     }
 
     // 0xA000 - 0xBFFF: cartrige RAM
     else if(address <= 0xBFFF) {
-        //TODO: implement here
-        memory[address] = value;
+        cartridge_ram[address] = value;
         return;
     }
 
     // 0xC000 - 0xDFFF: Internal RAM
-    else if(address <= 0xDFFF) {
-        //TODO: implement here
-        memory[address] = value;
-        return;
-    }
-
     // 0xE000 - 0xFDFF: Echo of internal RAM
     else if(address <= 0xFDFF) {
-        //TODO: implement here
-        memory[address - 0xE000 + 0xC000] = value;
+        internal_ram[address & 0x1FFF] = value;
         return;
     }
 
     // 0xFE00 - 0xFE9F: OAM - Object Attribute Memory
     else if(address <= 0xFE9F) {
-        //TODO: implement here
-        memory[address] = value;
+        oam[address - 0xFE00] = value;
         return;
     }
 
     // 0xFEA0 - 0xFEFF: Unusable Memory
     else if(address <= 0xFEFF) {
-        //TODO: what happens here?
-        assert(0);
+        assert(0); //TODO: what happens when writing to unusable memory?
         return;
     }
 
     // 0xFF00 - 0xFF7F: Hardware I/O Registers
-    else if(address <= 0xFF7F) {
-        //TODO: implement here
-        memory[address] = value;
+    // 0xFFFF: Interrupt Enable Flag
+    else if(address <= 0xFF7F || address == 0xFFFF) {
+        set_hardware_register(&hardware_registers, address, value);
         return;
     }
 
     // 0xFF80 - 0xFFFE: Zero Page
     else if(address <= 0xFFFE) {
-        //TODO: implement here
-        memory[address] = value;
-        return;
-    }
-
-    // 0xFFFF: Interrupt Enable Flag
-    else if(address == 0xFFFF) {
-        //TODO: implement here
-        memory[address] = value;
+        zero_page[address] = value;
         return;
     }
 
