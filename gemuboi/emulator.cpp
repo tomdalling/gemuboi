@@ -253,7 +253,7 @@ U8 emu_standard_operand_read(Emulator* emu, U8 opcode) {
         case 0x03: case 0x0B: return r->e;
         case 0x04: case 0x0C: return r->h;
         case 0x05: case 0x0D: return r->l;
-        case 0x06: case 0x0E: return emu->mem_read<U8>(r->hl);
+        case 0x06: case 0x0E: return emu->mem_read(r->hl);
         case 0x07: case 0x0F: return r->a;
         default:
             assert(0); //should never get here
@@ -680,11 +680,15 @@ void debug_print_instruction(const U8* instr, U16 pc) {
 U8 emu_apply_next_instruction(Emulator* emu) {
     CPU::Registers* const r = &emu->registers;
 
-    const U8* instr = (U8*)emu->mem_address(r->pc);
-    const U8 opcode = *instr;
+    const U8 instr[3] = {
+        emu->mem_read(r->pc),
+        emu->mem_read(r->pc + 1),
+        emu->mem_read(r->pc + 2)
+    };
+    const U8 opcode = instr[0];
     const U8 direct_u8 = instr[1];
-    const S8 direct_s8 = (S8)instr[1];
-    const U16 direct_u16 = *(U16*)&instr[1];
+    const S8 direct_s8 = (S8)direct_u8;
+    const U16 direct_u16 = *((U16*)&instr[1]);
     const CPU::OpcodeDesc& opcode_description = CPU::Opcodes[opcode];
 
     U8 additional_cycles = 0; //for conditional instructions
@@ -699,7 +703,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
      */
     r->pc += opcode_description.byte_length;
 
-    switch(instr[0]){
+    switch(opcode){
 
         case 0x00: // NOP (- - - -)
             break;
@@ -745,7 +749,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x0A: // LD A,(BC) (- - - -)
-            r->a = emu->mem_read<U8>(r->bc);
+            r->a = emu->mem_read(r->bc);
             break;
 
         case 0x0B: // DEC BC (- - - -)
@@ -818,7 +822,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x1A: // LD A,(DE) (- - - -)
-            r->a = emu->mem_read<U8>(r->de);
+            r->a = emu->mem_read(r->de);
             break;
 
         case 0x1B: // DEC DE (- - - -)
@@ -930,7 +934,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x2A: // LD A,(HL+) (- - - -)
-            r->a = emu->mem_read<U8>(r->hl);
+            r->a = emu->mem_read(r->hl);
             r->hl += 1;
             break;
 
@@ -976,13 +980,17 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             r->sp += 1;
             break;
 
-        case 0x34: // INC (HL) (Z 0 H -)
-            inc_u8_impl((U8*)emu->mem_address(r->hl), r);
-            break;
+        case 0x34:{// INC (HL) (Z 0 H -)
+            U8 x = emu->mem_read(r->hl);
+            inc_u8_impl(&x, r);
+            emu->mem_write(r->hl, x);
+            break;}
 
-        case 0x35: // DEC (HL) (Z 1 H -)
-            dec_u8_impl((U8*)emu->mem_address(r->hl), r);
-            break;
+        case 0x35:{// DEC (HL) (Z 1 H -)
+            U8 x = emu->mem_read(r->hl);
+            dec_u8_impl(&x, r);
+            emu->mem_write(r->hl, x);
+            break;}
 
         case 0x36: // LD (HL),d8 (- - - -)
             emu->mem_write(r->hl, direct_u8);
@@ -1006,7 +1014,7 @@ U8 emu_apply_next_instruction(Emulator* emu) {
             break;
 
         case 0x3A: // LD A,(HL-) (- - - -)
-            r->a = emu->mem_read<U8>(r->hl);
+            r->a = emu->mem_read(r->hl);
             r->hl -= 1;
             break;
 
@@ -1378,7 +1386,7 @@ CALL_IMPL(ADDRESS); \
             break;}
 
         case 0xE9: // JP (HL) (- - - -)
-            r->pc = emu->mem_read<U8>(r->hl);
+            r->pc = emu->mem_read(r->hl);
             break;
 
         case 0xEA: // LD (a16),A (- - - -)
@@ -1390,7 +1398,7 @@ CALL_IMPL(ADDRESS); \
             break;
 
         case 0xF0: // LDH A,(a8) (- - - -)
-            r->a = emu->mem_read<U8>(0xFF00 + (U16)direct_u8);
+            r->a = emu->mem_read(0xFF00 + (U16)direct_u8);
             break;
 
         case 0xF1: // POP AF (Z N H C)
@@ -1399,7 +1407,7 @@ CALL_IMPL(ADDRESS); \
             break;
 
         case 0xF2: // LD A,(C)
-            r->a = emu->mem_read<U8>(0xFF00 + (U16)r->c);
+            r->a = emu->mem_read(0xFF00 + (U16)r->c);
             break;
 
         case 0xF3: // DI (- - - -)
@@ -1435,7 +1443,7 @@ CALL_IMPL(ADDRESS); \
             break;
             
         case 0xFA: // LD A,(a16) (- - - -)
-            r->a = emu->mem_read<U8>(direct_u16);
+            r->a = emu->mem_read(direct_u16);
             break;
             
         case 0xFB: // EI
@@ -1493,4 +1501,185 @@ void emulator_step(Emulator* emu) {
     U8 cycles = emu_apply_next_instruction(emu);
     cycles += 1;
     //TODO: update total cycles elapsed in emulator
+}
+
+U8 Emulator::mem_read(U16 address) {
+    // 0x0000 - 0x3FFF: bank 0 of cart ROM (not switchable)
+    if(address <= 0x3FFF) {
+        if(address <= 0x00FF && bootstrap_rom_enabled()) {
+            // bootstrap ROM occupies 0x0000 - 0x00FF, but only if the hardware flag is set
+            return BootstrapRom[address];
+        } else {
+            return cart.data[address];
+        }
+    }
+
+    // 0x4000 - 0x7FFF: switchable cart ROM banks
+    else if(address <= 0x7FFF){
+        //TODO: implement bank switching
+        return cart.data[address];
+    }
+
+    // 0x8000 - 0x9FFF: video RAM
+    else if(address <= 0x9FFF){
+        //TODO: implement here
+        return memory[address];
+    }
+
+    // 0xA000 - 0xBFFF: cartrige RAM
+    else if(address <= 0xBFFF) {
+        //TODO: implement here
+        return memory[address];
+    }
+
+    // 0xC000 - 0xDFFF: Internal RAM
+    else if(address <= 0xDFFF) {
+        //TODO: implement here
+        return memory[address];
+    }
+
+    // 0xE000 - 0xFDFF: Echo of internal RAM
+    else if(address <= 0xFDFF) {
+        //TODO: implement here
+        return memory[address - 0xE000 + 0xC000];
+    }
+
+    // 0xFE00 - 0xFE9F: OAM - Object Attribute Memory
+    else if(address <= 0xFE9F) {
+        //TODO: implement here
+        return memory[address];
+    }
+
+    // 0xFEA0 - 0xFEFF: Unusable Memory
+    else if(address <= 0xFEFF) {
+        return 0xFF; //TODO: what happens when you read unusable memory?
+    }
+
+    // 0xFF00 - 0xFF7F: Hardware I/O Registers
+    else if(address <= 0xFF7F) {
+        //TODO: implement here
+        return memory[address];
+    }
+
+    // 0xFF80 - 0xFFFE: Zero Page
+    else if(address <= 0xFFFE) {
+        //TODO: implement here
+        return memory[address];
+    }
+
+    // 0xFFFF: Interrupt Enable Flag
+    else if(address == 0xFFFF) {
+        //TODO: implement here
+        return memory[address];
+    }
+
+    else {
+        assert(0); //should never get here. All addresses should be covered
+    }
+}
+
+void Emulator::mem_write(U16 address, U8 value) {
+    // 0x0000 - 0x3FFF: bank 0 of cart ROM (not switchable)
+    // 0x4000 - 0x7FFF: switchable cart ROM banks
+    if(address <= 0x7FFF){
+        //This is ROM. Can't write to here.
+        assert(0);
+        return;
+    }
+
+    // 0x8000 - 0x9FFF: video RAM
+    else if(address <= 0x9FFF){
+        //TODO: implement here
+        memory[address] = value;
+        return;
+    }
+
+    // 0xA000 - 0xBFFF: cartrige RAM
+    else if(address <= 0xBFFF) {
+        //TODO: implement here
+        memory[address] = value;
+        return;
+    }
+
+    // 0xC000 - 0xDFFF: Internal RAM
+    else if(address <= 0xDFFF) {
+        //TODO: implement here
+        memory[address] = value;
+        return;
+    }
+
+    // 0xE000 - 0xFDFF: Echo of internal RAM
+    else if(address <= 0xFDFF) {
+        //TODO: implement here
+        memory[address - 0xE000 + 0xC000] = value;
+        return;
+    }
+
+    // 0xFE00 - 0xFE9F: OAM - Object Attribute Memory
+    else if(address <= 0xFE9F) {
+        //TODO: implement here
+        memory[address] = value;
+        return;
+    }
+
+    // 0xFEA0 - 0xFEFF: Unusable Memory
+    else if(address <= 0xFEFF) {
+        //TODO: what happens here?
+        assert(0);
+        return;
+    }
+
+    // 0xFF00 - 0xFF7F: Hardware I/O Registers
+    else if(address <= 0xFF7F) {
+        //TODO: implement here
+        memory[address] = value;
+        return;
+    }
+
+    // 0xFF80 - 0xFFFE: Zero Page
+    else if(address <= 0xFFFE) {
+        //TODO: implement here
+        memory[address] = value;
+        return;
+    }
+
+    // 0xFFFF: Interrupt Enable Flag
+    else if(address == 0xFFFF) {
+        //TODO: implement here
+        memory[address] = value;
+        return;
+    }
+
+    else {
+        assert(0); //should never get here. All addresses should be covered
+    }
+}
+
+U16 Emulator::mem_read_16(U16 address) {
+    U16 value = 0;
+    U8* bytes = (U8*)&value;
+    bytes[0] = mem_read(address);
+    bytes[1] = mem_read(address + 1);
+    return value;
+}
+
+void Emulator::mem_write_16(U16 address, U16 value) {
+    U8* bytes = (U8*)&value;
+    mem_write(address, bytes[0]);
+    mem_write(address+1, bytes[1]);
+}
+
+U16 Emulator::stack_pop() {
+    U16 retval = mem_read_16(registers.sp);
+    registers.sp += 2;
+    return retval;
+}
+
+void Emulator::stack_push(U16 value) {
+    registers.sp -= 2;
+    mem_write_16(registers.sp, value);
+}
+
+BOOL32 Emulator::bootstrap_rom_enabled() {
+    return (mem_read(BootstrapRomFlagAddress) == BootstrapRomFlag_Enabled);
 }
