@@ -7,8 +7,8 @@ namespace Video {
      The main GameBoy screen buffer (background) consists of 256x256 pixels
      or 32x32 tiles (8x8 pixels each).
      */
-    const U8 ScreenBufferWidth = 256;
-    const U8 ScreenBufferHeight = 256;
+    const U16 ScreenBufferWidth = 256;
+    const U16 ScreenBufferHeight = 256;
 
     /*
      The gameboy contains two 32x32 tile background maps in VRAM.
@@ -56,28 +56,53 @@ namespace Video {
     const U8 ViewportWidth = 160;
     const U8 ViewportHeight = 144;
 
-
-    /*
-     If this bit is set to 0, sprite is displayed on top of background & window. 
-     If this bit is set to 1, then sprite will be hidden behind colors 1, 2, and 3 
-     of the background & window. (Sprite only prevails over color 0 of BG & win.)
-     */
-    const U8 SpriteFlag_Priority = (1 << 7);
-
-    // Sprite pattern is flipped vertically if this bit is set to 1. */
-    const U8 SpriteFlag_YFlip = (1 << 6);
-
-    // Sprite pattern is flipped horizontally if this bit is set to 1. */
-    const U8 SpriteFlag_XFlip = (1 << 5);
-
-    // Sprite colors are taken from OBJ1PAL if this bit is set to 1 and from OBJ0PAL otherwise.
-    const U8 SpriteFlag_Palette = (1 << 4);
-
     struct Sprite {
         U8 y; //Y position on the screen
         U8 x; //X position on the screen
         U8 pattern; //Pattern number 0-255 (Unlike some tile numbers, sprite pattern numbers
                     // are unsigned. LSB is ignored (treated as 0) in 8x16 mode.)
         U8 flags; // see SpriteFlag_* above
+
+        /*
+         If this bit is set to 0, sprite is displayed on top of background & window.
+         If this bit is set to 1, then sprite will be hidden behind colors 1, 2, and 3
+         of the background & window. (Sprite only prevails over color 0 of BG & win.)
+         */
+        static const U8 SpriteFlag_Priority = (1 << 7);
+
+        // Sprite pattern is flipped vertically if this bit is set to 1. */
+        static const U8 SpriteFlag_YFlip = (1 << 6);
+
+        // Sprite pattern is flipped horizontally if this bit is set to 1. */
+        static const U8 SpriteFlag_XFlip = (1 << 5);
+
+        // Sprite colors are taken from OBJ1PAL if this bit is set to 1 and from OBJ0PAL otherwise.
+        static const U8 SpriteFlag_Palette = (1 << 4);
     };
+
+    struct TileMap {
+        static const U8 TileSize = 32;
+        U8 tiles[TileSize][TileSize];
+    };
+
+    struct Tile {
+        static const U8 PixelSize = 8;
+        U8 pixels[16];
+    };
+
+    union VRAM {
+        U8 memory[0x2000];
+        struct {
+            // Tile Data Table 1: Tiles 0 - 256
+            // Tile Data Table 2: Tiles 128 - 384;
+            Tile tiles[384];
+            TileMap tilemaps[2];
+        };
+    };
+
+    union OAM {
+        U8 memory[160];
+        Video::Sprite sprites[40];
+    };
+
 } //namespace Video

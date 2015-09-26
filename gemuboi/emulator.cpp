@@ -12,7 +12,10 @@
 
 #include "emulator.hpp"
 
-U8 BootstrapRom[BootstrapRomSize] = {
+const U16 BootstrapRomSize = 256;
+const U16 BootstrapRom_Enabled = 0x00; // BS ROM is readable
+//const U16 BootstrapRom_Disabled = 0x01; // BS ROM not readable (replaced by cartridge ROM)
+const U8 BootstrapRom[BootstrapRomSize] = {
     0x31, 0xfe, 0xff, 0xaf, 0x21, 0xff, 0x9f, 0x32, 0xcb, 0x7c, 0x20, 0xfb,
     0x21, 0x26, 0xff, 0x0e, 0x11, 0x3e, 0x80, 0x32, 0xe2, 0x0c, 0x3e, 0xf3,
     0xe2, 0x32, 0x3e, 0x77, 0x77, 0x3e, 0xfc, 0xe0, 0x47, 0x11, 0x04, 0x01,
@@ -694,7 +697,11 @@ U8 emu_apply_next_instruction(Emulator* emu) {
     U8 additional_cycles = 0; //for conditional instructions
 
     debug_print_instruction(instr, r->pc);
-    
+
+    if(emu->registers.pc == 0x0040){
+        printf("BREAK\n");
+    }
+
     /*
      Step to next instruction.
 
@@ -1490,11 +1497,10 @@ CALL_IMPL(ADDRESS); \
 }
 
 void emulator_init(Emulator* emu) {
-    //Enabled the bootstrap rom
-    emu->mem_write(BootstrapRomFlagAddress, BootstrapRomFlag_Enabled);
+    memset(emu, 0, sizeof(*emu));
 
-    //PC register is zero, which is where the bootstrap rom begins
-    memset(&emu->registers, 0, sizeof(emu->registers));
+    //already set to zero by memset
+    //emu->hardware_registers.bootstrap_rom = BootstrapRom_Enabled;
 }
 
 void emulator_step(Emulator* emu) {
@@ -1630,7 +1636,7 @@ void set_hardware_register(HardwareRegisters::Registers* hwr, U16 address, U8 va
 U8 Emulator::mem_read(U16 address) {
     // 0x0000 - 0x3FFF: bank 0 of cart ROM (not switchable)
     if(address <= 0x3FFF) {
-        if(address <= 0x00FF && bootstrap_rom_enabled()) {
+        if(address <= 0x00FF && hardware_registers.bootstrap_rom == BootstrapRom_Enabled) {
             // bootstrap ROM occupies 0x0000 - 0x00FF, but only if the hardware flag is set
             return BootstrapRom[address];
         } else {
@@ -1646,12 +1652,12 @@ U8 Emulator::mem_read(U16 address) {
 
     // 0x8000 - 0x9FFF: video RAM
     else if(address <= 0x9FFF){
-        return video_ram[address];
+        return vram.memory[address - 0x8000];
     }
 
     // 0xA000 - 0xBFFF: cartrige RAM
     else if(address <= 0xBFFF) {
-        return cartridge_ram[address];
+        return cartridge_ram[address - 0xA000];
     }
 
     // 0xC000 - 0xDFFF: Internal RAM
@@ -1662,7 +1668,7 @@ U8 Emulator::mem_read(U16 address) {
 
     // 0xFE00 - 0xFE9F: OAM - Object/Sprite Attribute Memory
     else if(address <= 0xFE9F) {
-        return oam[address - 0xFE00];
+        return oam.memory[address - 0xFE00];
     }
 
     // 0xFEA0 - 0xFEFF: Unusable Memory
@@ -1678,32 +1684,30 @@ U8 Emulator::mem_read(U16 address) {
 
     // 0xFF80 - 0xFFFE: Zero Page
     else if(address <= 0xFFFE) {
-        return zero_page[address];
+        return zero_page[address - 0xFF80];
     }
 
-    else {
-        assert(0); //should never get here. All addresses should be covered
-    }
+    assert(0); //should never get here. All addresses should be covered
 }
 
 void Emulator::mem_write(U16 address, U8 value) {
     // 0x0000 - 0x3FFF: bank 0 of cart ROM (not switchable)
     // 0x4000 - 0x7FFF: switchable cart ROM banks
     if(address <= 0x7FFF){
-        //This is ROM. Can't write to here.
+        //TODO: writing into this area does memory bank switching
         assert(0);
         return;
     }
 
     // 0x8000 - 0x9FFF: video RAM
     else if(address <= 0x9FFF){
-        video_ram[address] = value;
+        vram.memory[address - 0x8000] = value;
         return;
     }
 
     // 0xA000 - 0xBFFF: cartrige RAM
     else if(address <= 0xBFFF) {
-        cartridge_ram[address] = value;
+        cartridge_ram[address - 0xA000] = value;
         return;
     }
 
@@ -1716,7 +1720,7 @@ void Emulator::mem_write(U16 address, U8 value) {
 
     // 0xFE00 - 0xFE9F: OAM - Object Attribute Memory
     else if(address <= 0xFE9F) {
-        oam[address - 0xFE00] = value;
+        oam.memory[address - 0xFE00] = value;
         return;
     }
 
@@ -1735,13 +1739,11 @@ void Emulator::mem_write(U16 address, U8 value) {
 
     // 0xFF80 - 0xFFFE: Zero Page
     else if(address <= 0xFFFE) {
-        zero_page[address] = value;
+        zero_page[address - 0xFF80] = value;
         return;
     }
 
-    else {
-        assert(0); //should never get here. All addresses should be covered
-    }
+    assert(0); //should never get here. All addresses should be covered
 }
 
 U16 Emulator::mem_read_16(U16 address) {
@@ -1767,8 +1769,4 @@ U16 Emulator::stack_pop() {
 void Emulator::stack_push(U16 value) {
     registers.sp -= 2;
     mem_write_16(registers.sp, value);
-}
-
-BOOL32 Emulator::bootstrap_rom_enabled() {
-    return (mem_read(BootstrapRomFlagAddress) == BootstrapRomFlag_Enabled);
 }

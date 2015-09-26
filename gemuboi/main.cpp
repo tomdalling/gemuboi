@@ -49,6 +49,13 @@ void test(Emulator* emu) {
     U8* u16p = (U8*)(void*)&u16;
     assert(u16p[0] == 0xCD);
     assert(u16p[1] == 0xAB);
+
+    //check sizes of structs
+    assert(sizeof(Video::Sprite) == 4);
+    assert(sizeof(Video::Tile) == 16);
+    assert(sizeof(Video::TileMap) == 1024);
+    assert(sizeof(Video::VRAM) == 0x2000);
+    assert(sizeof(Video::OAM) == 160);
 }
 
 int main(int argc, const char * argv[]) {
@@ -61,9 +68,6 @@ int main(int argc, const char * argv[]) {
     test(emu);
 
     for(;;){
-        if(emu->registers.pc == 0x0055){
-            printf("BREAK\n");
-        }
         emulator_step(emu);
 //        std::this_thread::sleep_for(std::chrono::seconds(2));
     }
