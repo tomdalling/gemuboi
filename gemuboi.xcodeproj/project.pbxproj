@@ -7,91 +7,107 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		E212FDCC1BB2F846007E74AF /* emulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E212FDCB1BB2F846007E74AF /* emulator.cpp */; };
-		E27674B41BB67FCD00A9A0F8 /* timer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E27674B31BB67FCD00A9A0F8 /* timer.cpp */; };
-		E2D6A0001BAAAD7700B71FC2 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E2D69FFF1BAAAD7700B71FC2 /* main.cpp */; };
+		E27C402D1BBFE1590021B05E /* SDL2.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E27C402C1BBFE1590021B05E /* SDL2.framework */; settings = {ASSET_TAGS = (); }; };
+		E27C40301BBFE18E0021B05E /* SDL2.framework in Copy Frameworks */ = {isa = PBXBuildFile; fileRef = E27C402C1BBFE1590021B05E /* SDL2.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		E27C40331BBFE5210021B05E /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E27C40321BBFE5210021B05E /* main.cpp */; settings = {ASSET_TAGS = (); }; };
+		E27C403D1BBFE5460021B05E /* emulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E27C40361BBFE5460021B05E /* emulator.cpp */; settings = {ASSET_TAGS = (); }; };
+		E27C403E1BBFE5460021B05E /* timer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E27C40391BBFE5460021B05E /* timer.cpp */; settings = {ASSET_TAGS = (); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		E2D69FFA1BAAAD7700B71FC2 /* CopyFiles */ = {
+		E27C402F1BBFE1800021B05E /* Copy Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = /usr/share/man/man1/;
-			dstSubfolderSpec = 0;
+			dstPath = "";
+			dstSubfolderSpec = 10;
 			files = (
+				E27C40301BBFE18E0021B05E /* SDL2.framework in Copy Frameworks */,
 			);
-			runOnlyForDeploymentPostprocessing = 1;
+			name = "Copy Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		E212FDC71BB0E397007E74AF /* cart.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = cart.hpp; sourceTree = "<group>"; };
-		E212FDC81BB0E40C007E74AF /* types.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = types.hpp; sourceTree = "<group>"; };
-		E212FDC91BB0E9F8007E74AF /* cpu.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = cpu.hpp; sourceTree = "<group>"; };
-		E212FDCA1BB2F775007E74AF /* emulator.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = emulator.hpp; sourceTree = "<group>"; };
-		E212FDCB1BB2F846007E74AF /* emulator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = emulator.cpp; sourceTree = "<group>"; };
-		E212FDCD1BB3C239007E74AF /* video.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = video.hpp; sourceTree = "<group>"; };
-		E212FDCE1BB3C624007E74AF /* timer.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = timer.hpp; sourceTree = "<group>"; };
-		E27674B31BB67FCD00A9A0F8 /* timer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = timer.cpp; sourceTree = "<group>"; };
-		E27674B51BB6C4E800A9A0F8 /* hardware_registers.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = hardware_registers.hpp; sourceTree = "<group>"; };
-		E2D69FFC1BAAAD7700B71FC2 /* gemuboi */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = gemuboi; sourceTree = BUILT_PRODUCTS_DIR; };
-		E2D69FFF1BAAAD7700B71FC2 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
+		E27C40181BBFE1120021B05E /* gemuboi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = gemuboi.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E27C402C1BBFE1590021B05E /* SDL2.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SDL2.framework; path = frameworks/SDL2.framework; sourceTree = "<group>"; };
+		E27C40321BBFE5210021B05E /* main.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
+		E27C40341BBFE5460021B05E /* cart.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = cart.hpp; sourceTree = "<group>"; };
+		E27C40351BBFE5460021B05E /* cpu.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = cpu.hpp; sourceTree = "<group>"; };
+		E27C40361BBFE5460021B05E /* emulator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = emulator.cpp; sourceTree = "<group>"; };
+		E27C40371BBFE5460021B05E /* emulator.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = emulator.hpp; sourceTree = "<group>"; };
+		E27C40381BBFE5460021B05E /* hardware_registers.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = hardware_registers.hpp; sourceTree = "<group>"; };
+		E27C40391BBFE5460021B05E /* timer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = timer.cpp; sourceTree = "<group>"; };
+		E27C403A1BBFE5460021B05E /* timer.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = timer.hpp; sourceTree = "<group>"; };
+		E27C403B1BBFE5460021B05E /* types.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = types.hpp; sourceTree = "<group>"; };
+		E27C403C1BBFE5460021B05E /* video.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = video.hpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		E2D69FF91BAAAD7700B71FC2 /* Frameworks */ = {
+		E27C40151BBFE1120021B05E /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E27C402D1BBFE1590021B05E /* SDL2.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		E2D69FF11BAAAD2C00B71FC2 = {
+		E27C400F1BBFE1120021B05E = {
 			isa = PBXGroup;
 			children = (
-				E2D69FFE1BAAAD7700B71FC2 /* gemuboi */,
-				E2D69FFD1BAAAD7700B71FC2 /* Products */,
+				E27C40311BBFE5210021B05E /* source */,
+				E27C402E1BBFE15D0021B05E /* frameworks */,
+				E27C40191BBFE1120021B05E /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		E2D69FFD1BAAAD7700B71FC2 /* Products */ = {
+		E27C40191BBFE1120021B05E /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				E2D69FFC1BAAAD7700B71FC2 /* gemuboi */,
+				E27C40181BBFE1120021B05E /* gemuboi.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		E2D69FFE1BAAAD7700B71FC2 /* gemuboi */ = {
+		E27C402E1BBFE15D0021B05E /* frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				E212FDC81BB0E40C007E74AF /* types.hpp */,
-				E212FDC71BB0E397007E74AF /* cart.hpp */,
-				E212FDC91BB0E9F8007E74AF /* cpu.hpp */,
-				E2D69FFF1BAAAD7700B71FC2 /* main.cpp */,
-				E212FDCA1BB2F775007E74AF /* emulator.hpp */,
-				E212FDCB1BB2F846007E74AF /* emulator.cpp */,
-				E212FDCD1BB3C239007E74AF /* video.hpp */,
-				E212FDCE1BB3C624007E74AF /* timer.hpp */,
-				E27674B31BB67FCD00A9A0F8 /* timer.cpp */,
-				E27674B51BB6C4E800A9A0F8 /* hardware_registers.hpp */,
+				E27C402C1BBFE1590021B05E /* SDL2.framework */,
 			);
-			path = gemuboi;
+			name = frameworks;
+			sourceTree = "<group>";
+		};
+		E27C40311BBFE5210021B05E /* source */ = {
+			isa = PBXGroup;
+			children = (
+				E27C40341BBFE5460021B05E /* cart.hpp */,
+				E27C40351BBFE5460021B05E /* cpu.hpp */,
+				E27C40361BBFE5460021B05E /* emulator.cpp */,
+				E27C40371BBFE5460021B05E /* emulator.hpp */,
+				E27C40381BBFE5460021B05E /* hardware_registers.hpp */,
+				E27C40391BBFE5460021B05E /* timer.cpp */,
+				E27C403A1BBFE5460021B05E /* timer.hpp */,
+				E27C403B1BBFE5460021B05E /* types.hpp */,
+				E27C403C1BBFE5460021B05E /* video.hpp */,
+				E27C40321BBFE5210021B05E /* main.cpp */,
+			);
+			path = source;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		E2D69FFB1BAAAD7700B71FC2 /* gemuboi */ = {
+		E27C40171BBFE1120021B05E /* gemuboi */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = E2D6A0011BAAAD7700B71FC2 /* Build configuration list for PBXNativeTarget "gemuboi" */;
+			buildConfigurationList = E27C40291BBFE1120021B05E /* Build configuration list for PBXNativeTarget "gemuboi" */;
 			buildPhases = (
-				E2D69FF81BAAAD7700B71FC2 /* Sources */,
-				E2D69FF91BAAAD7700B71FC2 /* Frameworks */,
-				E2D69FFA1BAAAD7700B71FC2 /* CopyFiles */,
+				E27C40141BBFE1120021B05E /* Sources */,
+				E27C40151BBFE1120021B05E /* Frameworks */,
+				E27C40161BBFE1120021B05E /* Resources */,
+				E27C402F1BBFE1800021B05E /* Copy Frameworks */,
 			);
 			buildRules = (
 			);
@@ -99,66 +115,66 @@
 			);
 			name = gemuboi;
 			productName = gemuboi;
-			productReference = E2D69FFC1BAAAD7700B71FC2 /* gemuboi */;
-			productType = "com.apple.product-type.tool";
+			productReference = E27C40181BBFE1120021B05E /* gemuboi.app */;
+			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		E2D69FF21BAAAD2C00B71FC2 /* Project object */ = {
+		E27C40101BBFE1120021B05E /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastUpgradeCheck = 0640;
+				LastUpgradeCheck = 0700;
+				ORGANIZATIONNAME = "Tom Dalling";
 				TargetAttributes = {
-					E2D69FFB1BAAAD7700B71FC2 = {
-						CreatedOnToolsVersion = 6.4;
+					E27C40171BBFE1120021B05E = {
+						CreatedOnToolsVersion = 7.0;
 					};
 				};
 			};
-			buildConfigurationList = E2D69FF51BAAAD2C00B71FC2 /* Build configuration list for PBXProject "gemuboi" */;
+			buildConfigurationList = E27C40131BBFE1120021B05E /* Build configuration list for PBXProject "gemuboi" */;
 			compatibilityVersion = "Xcode 3.2";
 			developmentRegion = English;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				Base,
 			);
-			mainGroup = E2D69FF11BAAAD2C00B71FC2;
-			productRefGroup = E2D69FFD1BAAAD7700B71FC2 /* Products */;
+			mainGroup = E27C400F1BBFE1120021B05E;
+			productRefGroup = E27C40191BBFE1120021B05E /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				E2D69FFB1BAAAD7700B71FC2 /* gemuboi */,
+				E27C40171BBFE1120021B05E /* gemuboi */,
 			);
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		E27C40161BBFE1120021B05E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
-		E2D69FF81BAAAD7700B71FC2 /* Sources */ = {
+		E27C40141BBFE1120021B05E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E212FDCC1BB2F846007E74AF /* emulator.cpp in Sources */,
-				E2D6A0001BAAAD7700B71FC2 /* main.cpp in Sources */,
-				E27674B41BB67FCD00A9A0F8 /* timer.cpp in Sources */,
+				E27C403D1BBFE5460021B05E /* emulator.cpp in Sources */,
+				E27C40331BBFE5210021B05E /* main.cpp in Sources */,
+				E27C403E1BBFE5460021B05E /* timer.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		E2D69FF61BAAAD2C00B71FC2 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-			};
-			name = Debug;
-		};
-		E2D69FF71BAAAD2C00B71FC2 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-			};
-			name = Release;
-		};
-		E2D6A0021BAAAD7700B71FC2 /* Debug */ = {
+		E27C40271BBFE1120021B05E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -175,9 +191,11 @@
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -186,7 +204,6 @@
 					"DEBUG=1",
 					"$(inherited)",
 				);
-				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
@@ -196,12 +213,11 @@
 				MACOSX_DEPLOYMENT_TARGET = 10.10;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
-				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 			};
 			name = Debug;
 		};
-		E2D6A0031BAAAD7700B71FC2 /* Release */ = {
+		E27C40281BBFE1120021B05E /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -218,6 +234,7 @@
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -232,33 +249,61 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 10.10;
 				MTL_ENABLE_DEBUG_INFO = NO;
-				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		E27C402A1BBFE1120021B05E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/frameworks",
+				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.tomdalling.gemuboi;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		E27C402B1BBFE1120021B05E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/frameworks",
+				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.tomdalling.gemuboi;
+				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		E2D69FF51BAAAD2C00B71FC2 /* Build configuration list for PBXProject "gemuboi" */ = {
+		E27C40131BBFE1120021B05E /* Build configuration list for PBXProject "gemuboi" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				E2D69FF61BAAAD2C00B71FC2 /* Debug */,
-				E2D69FF71BAAAD2C00B71FC2 /* Release */,
+				E27C40271BBFE1120021B05E /* Debug */,
+				E27C40281BBFE1120021B05E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		E2D6A0011BAAAD7700B71FC2 /* Build configuration list for PBXNativeTarget "gemuboi" */ = {
+		E27C40291BBFE1120021B05E /* Build configuration list for PBXNativeTarget "gemuboi" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				E2D6A0021BAAAD7700B71FC2 /* Debug */,
-				E2D6A0031BAAAD7700B71FC2 /* Release */,
+				E27C402A1BBFE1120021B05E /* Debug */,
+				E27C402B1BBFE1120021B05E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = E2D69FF21BAAAD2C00B71FC2 /* Project object */;
+	rootObject = E27C40101BBFE1120021B05E /* Project object */;
 }

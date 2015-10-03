@@ -651,6 +651,7 @@ void emu_cb_instruction(Emulator* emu, U8 cb_instr) {
 }
 
 void debug_print_instruction(const U8* instr, U16 pc) {
+    return;
     // instruction address
     printf("%0.4X: ", pc);
 
@@ -697,10 +698,6 @@ U8 emu_apply_next_instruction(Emulator* emu) {
     U8 additional_cycles = 0; //for conditional instructions
 
     debug_print_instruction(instr, r->pc);
-
-    if(emu->registers.pc == 0x0040){
-        printf("BREAK\n");
-    }
 
     /*
      Step to next instruction.
@@ -1496,8 +1493,17 @@ CALL_IMPL(ADDRESS); \
     return opcode_description.cycles + additional_cycles;
 }
 
+void randset(void* dest, size_t size) {
+    for(size_t i = 0; i < size; ++i){
+        ((U8*)dest)[i] = rand() % 0xFF;
+    }
+}
+
 void emulator_init(Emulator* emu) {
     memset(emu, 0, sizeof(*emu));
+
+    // put random garbage in vram
+    randset(&emu->vram, sizeof(emu->vram));
 
     //already set to zero by memset
     //emu->hardware_registers.bootstrap_rom = BootstrapRom_Enabled;

@@ -87,7 +87,11 @@ namespace Video {
 
     struct Tile {
         static const U8 PixelSize = 8;
-        U8 pixels[16];
+        struct Row {
+            U8 b1;
+            U8 b2;
+        };
+        Row rows[PixelSize];
     };
 
     union VRAM {
