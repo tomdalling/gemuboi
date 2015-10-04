@@ -95,11 +95,13 @@ namespace Video {
     };
 
     union VRAM {
+        static const unsigned TileCount = 384;
+
         U8 memory[0x2000];
         struct {
             // Tile Data Table 1: Tiles 0 - 256
             // Tile Data Table 2: Tiles 128 - 384;
-            Tile tiles[384];
+            Tile tiles[TileCount];
             TileMap tilemaps[2];
         };
     };

@@ -650,36 +650,6 @@ void emu_cb_instruction(Emulator* emu, U8 cb_instr) {
     emu_standard_operand_write(emu, cb_instr, operand);
 }
 
-void debug_print_instruction(const U8* instr, U16 pc) {
-    return;
-    // instruction address
-    printf("%0.4X: ", pc);
-
-    if(instr[0] == 0xCB){
-        // pseudo ASM
-        printf("%s", CPU::CBPrefixedOpcodes[instr[1]].description);
-    } else {
-        const CPU::OpcodeDesc& opcode = CPU::Opcodes[instr[0]];
-        // pseudo ASM
-        printf("0x%0.2X %s ", (unsigned)*instr, opcode.description);
-
-        // direct operands
-        switch(opcode.byte_length){
-            case 2:
-                printf("[0x%0.2X]", instr[1]);
-                break;
-            case 3:
-                printf("[0x%0.2X%0.2X]", instr[2], instr[1]);
-            default:
-                //pass
-                break;
-        }
-
-    }
-
-    printf("\n");
-}
-
 // returns number of cycles used
 U8 emu_apply_next_instruction(Emulator* emu) {
     CPU::Registers* const r = &emu->registers;
@@ -696,8 +666,6 @@ U8 emu_apply_next_instruction(Emulator* emu) {
     const CPU::OpcodeDesc& opcode_description = CPU::Opcodes[opcode];
 
     U8 additional_cycles = 0; //for conditional instructions
-
-    debug_print_instruction(instr, r->pc);
 
     /*
      Step to next instruction.
@@ -1707,6 +1675,7 @@ void Emulator::mem_write(U16 address, U8 value) {
 
     // 0x8000 - 0x9FFF: video RAM
     else if(address <= 0x9FFF){
+        vram_mutated = True;
         vram.memory[address - 0x8000] = value;
         return;
     }
@@ -1726,6 +1695,7 @@ void Emulator::mem_write(U16 address, U8 value) {
 
     // 0xFE00 - 0xFE9F: OAM - Object Attribute Memory
     else if(address <= 0xFE9F) {
+        vram_mutated = True;
         oam.memory[address - 0xFE00] = value;
         return;
     }

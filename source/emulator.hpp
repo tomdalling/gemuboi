@@ -14,15 +14,16 @@
 #include "video.hpp"
 
 struct Emulator {
-    CPU::Registers registers;
-    HardwareRegisters::Registers hardware_registers;
     Video::VRAM vram;
     U8 cartridge_ram[0x2000];
     U8 internal_ram[0x2000];
+    HardwareRegisters::Registers hardware_registers;
     U8 zero_page[128];
     Video::OAM oam;
 
+    CPU::Registers registers;
     Cart::Cart cart;
+    BOOL32 vram_mutated;
 
     /*
      TODO:
