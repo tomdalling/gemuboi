@@ -170,9 +170,9 @@ void rlc(U8* in_out_value, CPU::Registers* registers) {
      Old high bit (7) becomes the new low bit (0).
      Old high bit (7) also gets stored in the carry flag.
 
-     +---------------------------------+
-     |                                 |
-     |                                 v
+             +---------------------------------+
+             |                                 |
+             |                                 v
      +---+   |   +---+---+---+---+---+---+---+---+
      | C |<--+---| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
      +---+       +---+---+---+---+---+---+---+---+
@@ -191,9 +191,9 @@ void rrc(U8* in_out_value, CPU::Registers* registers) {
      Old low bit (0) becomes the new high bit (7).
      Old low bit (0) to the carry flag.
 
-     +-----+---------------------------------+
-     |     |                                 |
-     v     |                                 |
+       +-----+---------------------------------+
+       |     |                                 |
+       v     |                                 |
      +---+   |   +---+---+---+---+---+---+---+---+
      | C |   +-->| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
      +---+       +---+---+---+---+---+---+---+---+
@@ -211,9 +211,9 @@ void rr(U8* in_out_value, CPU::Registers* registers) {
      Old low bit (0) becomes the new carry flag.
      Old carry flag becomes the new high bit (7).
 
-     +---------------------------------------+
-     |                                       |
-     v                                       |
+       +---------------------------------------+
+       |                                       |
+       v                                       |
      +---+       +---+---+---+---+---+---+---+---+
      | C |------>| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
      +---+       +---+---+---+---+---+---+---+---+
@@ -231,9 +231,9 @@ void rl(U8* in_out_value, CPU::Registers* registers) {
      Old high bit (7) becomes the new carry flag.
      Old carry flag becomes the new low bit (0).
 
-     +---------------------------------------+
-     |                                       |
-     |                                       v
+       +---------------------------------------+
+       |                                       |
+       |                                       v
      +---+       +---+---+---+---+---+---+---+---+
      | C |<------| 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
      +---+       +---+---+---+---+---+---+---+---+
