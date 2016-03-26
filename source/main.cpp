@@ -72,16 +72,17 @@ struct BGRA {
     U8 a;
 };
 
+const BGRA GameboyColorTable[4] = {
+    {0x7B, 0xF7, 0xFF, 0xFF},
+    {0x4A, 0xAE, 0xB5, 0xFF},
+    {0x31, 0x69, 0x6B, 0xFF},
+    {0x10, 0x20, 0x21, 0xFF},
+};
+
 BGRA greyscale_to_bgra(int greyscale) {
     //GB only has 4 colors
     assert(0 <= greyscale && greyscale <= 3);
-
-    BGRA pixel;
-    pixel.a = 0xFF;
-    pixel.r = greyscale * 85;
-    pixel.g = greyscale * 85;
-    pixel.b = greyscale * 85;
-    return pixel;
+    return GameboyColorTable[greyscale];
 }
 
 void update_texture(SDL_Texture* texture, Bitmap* bitmap) {
