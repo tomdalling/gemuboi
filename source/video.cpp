@@ -94,11 +94,11 @@ void Video::GPU::update_tileset() {
 }
 
 void Video::GPU::blit_tile(Tile* tile, Bitmap* bitmap, U16 x, U16 y) {
-    for(unsigned tile_row = 0; tile_row < Tile::PixelSize; ++tile_row){
-        Video::Tile::Row& packed_row = tile->rows[tile_row];
+    for(unsigned tile_row_idx = 0; tile_row_idx < Tile::PixelSize; ++tile_row_idx){
+        Video::Tile::Row& tile_row = tile->rows[tile_row_idx];
+        U8* bitmap_row = bitmap->pixelPtr(x, y+tile_row_idx);
         for(unsigned pixel_idx = 0; pixel_idx < Video::Tile::PixelSize; ++pixel_idx){
-            U8 color = packed_row.unpack_pixel(7 - pixel_idx);
-            bitmap->setPixel(x + pixel_idx, y + tile_row, color);
+            bitmap_row[pixel_idx] = tile_row.unpack_pixel(7 - pixel_idx);
         }
     }
 }
