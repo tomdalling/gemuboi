@@ -19,12 +19,9 @@
 #include "cpu.hpp"
 #include "emulator.hpp"
 
-const unsigned Tileset_TilesPerRow = 16;
-const unsigned Tileset_TilesPerColumn = (Video::VRAM::TileCount / Tileset_TilesPerRow);
-const unsigned Tileset_PixelsPerRow = Tileset_TilesPerRow * Video::Tile::PixelSize;
-const unsigned Tileset_PixelsPerColumn = Tileset_TilesPerColumn * Video::Tile::PixelSize;
 
-const unsigned Tilemap_PixelSize = Video::TileMap::TileSize * Video::Tile::PixelSize;
+//const U16 BREAKPOINT = 0x006A; // in boot rom, just after finished wating for vblank
+const U16 BREAKPOINT = 0x0000;
 
 void cart_fread(Cart::Cart* cart, const char* filename) {
     FILE* f = fopen(filename, "rb");
@@ -75,61 +72,31 @@ struct BGRA {
     U8 a;
 };
 
-// returns 0, 1, 2, or 3
-U8 unpack_pixel(U8 first_byte, U8 second_byte, U8 pixel_idx){
-    U8 bit0 = ((first_byte >> pixel_idx) & 0x01);
-    U8 bit1 = ((second_byte >> pixel_idx) & 0x01) << 1;
-    return (bit0 | bit1);
+BGRA greyscale_to_bgra(int greyscale) {
+    //GB only has 4 colors
+    assert(0 <= greyscale && greyscale <= 3);
+
+    BGRA pixel;
+    pixel.a = 0xFF;
+    pixel.r = greyscale * 85;
+    pixel.g = greyscale * 85;
+    pixel.b = greyscale * 85;
+    return pixel;
 }
 
-void blit_tile(Video::Tile* tile, void* dest, int dest_pitch, unsigned dest_x, unsigned dest_y) {
-    assert(dest_pitch > 0);
+void update_texture(SDL_Texture* texture, Bitmap* bitmap) {
+    const int bytes_per_pixel = 4;
 
-    const unsigned bytes_per_texture_pixel = 4;
-
-    for(unsigned tile_row = 0; tile_row < Video::Tile::PixelSize; ++tile_row){
-        unsigned texture_y = dest_y + tile_row;
-        BGRA* row = (BGRA*)((U8*)dest + dest_pitch*texture_y + dest_x*bytes_per_texture_pixel);
-        for(unsigned pixel_idx = 0; pixel_idx < Video::Tile::PixelSize; ++pixel_idx){
-            Video::Tile::Row& packed_row = tile->rows[tile_row];
-            U8 greyscale = unpack_pixel(packed_row.b1, packed_row.b2, 7 - pixel_idx);
-            BGRA &pixel = row[pixel_idx];
-            pixel.a = 0xFF;
-            pixel.r = greyscale * 85;
-            pixel.g = greyscale * 85;
-            pixel.b = greyscale * 85;
-        }
-    }
-
-}
-
-void update_tileset(SDL_Texture* texture, Video::VRAM* vram) {
-    void* buffer = NULL;
+    U8* pixels = NULL;
     int pitch = 0;
-    int did_lock = SDL_LockTexture(texture, NULL, &buffer, &pitch);
-    assert(did_lock == 0);
+    int lock_result = SDL_LockTexture(texture, NULL, (void**)&pixels, &pitch);
+    assert(lock_result == 0);
 
-    for(unsigned tile_idx = 0; tile_idx < Video::VRAM::TileCount; ++tile_idx){
-        unsigned texture_x = (tile_idx % Tileset_TilesPerRow) * Video::Tile::PixelSize;
-        unsigned texture_y = Video::Tile::PixelSize * (tile_idx / Tileset_TilesPerRow);
-        blit_tile(&vram->tiles[tile_idx], buffer, pitch, texture_x, texture_y);
-    }
-
-    SDL_UnlockTexture(texture);
-}
-
-void update_tilemap(SDL_Texture* texture, Video::VRAM* vram, unsigned tilemap_idx) {
-    void* buffer = NULL;
-    int pitch = 0;
-    int did_lock = SDL_LockTexture(texture, NULL, &buffer, &pitch);
-    assert(did_lock == 0);
-
-    for(unsigned y = 0; y < Video::TileMap::TileSize; ++y){
-        for(unsigned x = 0; x < Video::TileMap::TileSize; ++x){
-            U8 tile_idx = vram->tilemaps[tilemap_idx].tiles[y][x];
-            unsigned px = x * Video::Tile::PixelSize;
-            unsigned py = y * Video::Tile::PixelSize;
-            blit_tile(&vram->tiles[tile_idx], buffer, pitch, px, py);
+    for(int y = 0; y < bitmap->height; ++y){
+        for(int x = 0; x < bitmap->width; ++x){
+            BGRA* dest = (BGRA*)(pixels + y*pitch + x*bytes_per_pixel);
+            BGRA src = greyscale_to_bgra(bitmap->getPixel(x, y));
+            *dest = src;
         }
     }
 
@@ -174,14 +141,21 @@ void print_next_instruction(Emulator* emu) {
                 break;
             case 3:
                 printf("[0x%0.2X%0.2X]", instr[2], instr[1]);
+                break;
             default:
                 //pass
                 break;
         }
-
     }
     
     printf("\n");
+}
+
+void move_window(Emulator* emu, int dx, int dy){
+    emu->hardware_registers.wx += dx;
+    emu->hardware_registers.wy += dy;
+    emu->vram_mutated = True;
+    printf("%d/%d\n", (int)emu->hardware_registers.wx, (int)emu->hardware_registers.wy);
 }
 
 int main(int argc, const char * argv[]) {
@@ -193,7 +167,7 @@ int main(int argc, const char * argv[]) {
 
     SDL_Window* window = SDL_CreateWindow("Gemuboi",
                                           SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                                          800, 600,
+                                          850, 520,
                                           SDL_WINDOW_SHOWN);
     assert(window);
 
@@ -209,18 +183,24 @@ int main(int argc, const char * argv[]) {
     SDL_Texture* vram_window = SDL_CreateTexture(renderer,
                                                  SDL_PIXELFORMAT_ARGB8888,
                                                  SDL_TEXTUREACCESS_STREAMING,
-                                                 Tilemap_PixelSize, Tilemap_PixelSize);
+                                                 Video::ScreenBufferSize, Video::ScreenBufferSize);
     SDL_Texture* vram_background = SDL_CreateTexture(renderer,
                                                      SDL_PIXELFORMAT_ARGB8888,
                                                      SDL_TEXTUREACCESS_STREAMING,
-                                                     Tilemap_PixelSize, Tilemap_PixelSize);
+                                                     Video::ScreenBufferSize, Video::ScreenBufferSize);
     SDL_Texture* vram_tileset = SDL_CreateTexture(renderer,
                                                   SDL_PIXELFORMAT_ARGB8888,
                                                   SDL_TEXTUREACCESS_STREAMING,
-                                                  Tileset_PixelsPerRow, Tileset_PixelsPerColumn);
+                                                  Video::Tileset_PixelsPerRow, Video::Tileset_PixelsPerColumn);
+    SDL_Texture* vram_viewport = SDL_CreateTexture(renderer,
+                                                   SDL_PIXELFORMAT_ARGB8888,
+                                                   SDL_TEXTUREACCESS_STREAMING,
+                                                   Video::ViewportWidth, Video::ViewportHeight);
+
 
     bool running = true;
-    bool continuing = false;
+    bool continuing = true;
+    U32 last_frame = UINT32_MAX;
     while(running){
         SDL_Event event;
         while(SDL_PollEvent(&event)){
@@ -228,11 +208,18 @@ int main(int argc, const char * argv[]) {
                 case SDL_QUIT: running = false; break;
                 case SDL_KEYDOWN:
                     switch(event.key.keysym.sym){
-                        case SDLK_s: emulator_step(emu); break;
+                        case SDLK_s:
+                            emulator_step(emu);
+                            print_next_instruction(emu);
+                            break;
                         case SDLK_n: for(int i=0;i<100;++i) emulator_step(emu); break;
                         case SDLK_r: print_register_info(emu); break;
                         case SDLK_c: continuing = true; break;
                         case SDLK_b: continuing = false; break;
+                        case SDLK_LEFT: move_window(emu, -1, 0); break;
+                        case SDLK_RIGHT: move_window(emu, 1, 0); break;
+                        case SDLK_UP: move_window(emu, 0, -1); break;
+                        case SDLK_DOWN: move_window(emu, 0, 1); break;
                         default: break; //do nothing
                     }
                     break;
@@ -245,22 +232,30 @@ int main(int argc, const char * argv[]) {
             SDL_Delay(1); //don't check up the CPU too badly
         }
 
-        if(emu->vram_mutated){
-            emu->vram_mutated = False;
+        if(continuing && emu->registers.pc == BREAKPOINT){
+            printf("Breaking at %0.4X\n", BREAKPOINT);
+            continuing = false;
+        }
 
-            update_tileset(vram_tileset, &emu->vram);
-            update_tilemap(vram_window, &emu->vram, 0);
-            update_tilemap(vram_background, &emu->vram, 1);
+        if(last_frame != emu->gpu.frame_number){
+            last_frame = emu->gpu.frame_number;
 
-            SDL_Rect tileset_rect = { 0, 0, Tileset_PixelsPerRow * 2, Tileset_PixelsPerColumn * 2 };
-            SDL_Rect window_rect = {tileset_rect.w + 5, 0, Tilemap_PixelSize, Tilemap_PixelSize};
-            SDL_Rect background_rect = {window_rect.x, window_rect.h + 5, Tilemap_PixelSize, Tilemap_PixelSize};
+            SDL_Rect tileset_rect = { 0, 0, Video::Tileset_PixelsPerRow * 2, Video::Tileset_PixelsPerColumn * 2 };
+            SDL_Rect window_rect = {tileset_rect.w + 5, 0, Video::ScreenBufferSize, Video::ScreenBufferSize};
+            SDL_Rect background_rect = {window_rect.x, window_rect.h + 5, Video::ScreenBufferSize, Video::ScreenBufferSize};
+            SDL_Rect viewport_rect = { window_rect.x + window_rect.w + 5, 0, Video::ViewportWidth*2, Video::ViewportHeight*2 };
+
+            update_texture(vram_tileset, &emu->gpu.tileset);
+            update_texture(vram_window, &emu->gpu.window);
+            update_texture(vram_background, &emu->gpu.background);
+            update_texture(vram_viewport, &emu->gpu.viewport);
 
             SDL_SetRenderDrawColor(renderer, 0, 0x33, 0, 0xFF);
             SDL_RenderClear(renderer);
             SDL_RenderCopy(renderer, vram_tileset, NULL, &tileset_rect);
             SDL_RenderCopy(renderer, vram_window, NULL, &window_rect);
             SDL_RenderCopy(renderer, vram_background, NULL, &background_rect);
+            SDL_RenderCopy(renderer, vram_viewport, NULL, &viewport_rect);
             SDL_RenderPresent(renderer);
         }
     }

@@ -1,14 +1,36 @@
 # pragma once
 
 #include "types.hpp"
+#include "bitmap.hpp"
 
 namespace Video {
+    /*
+     Only 160x144 pixels can be displayed on the screen. Registers SCROLLX and SCROLLY hold the
+     coordinates of background to be displayed in the left upper corner of the screen. Background
+     wraps around the screen (i.e. when part of it goes off the screen, it appears on the opposite
+     side.)
+     */
+    static const U8 ViewportWidth = 160;
+    static const U8 ViewportHeight = 144;
+
     /* 
-     The main GameBoy screen buffer (background) consists of 256x256 pixels
+     The GB background and window buffers consists of 256x256 pixels,
      or 32x32 tiles (8x8 pixels each).
      */
-    const U16 ScreenBufferWidth = 256;
-    const U16 ScreenBufferHeight = 256;
+    const U16 ScreenBufferSize = 256;
+
+    //TODO: should these cycles be multiplied by 4?
+    static const U32 GPUModeDurations[4] = { // in cycles
+        204, //HBLANK
+        456, //VBLANK
+        80,  //OAM_READ
+        172, //VRAM_READ
+    };
+
+    /* 
+     The number of non-visible rows of viewport pixels drawn during v-blank.
+     */
+    static const U8 VBlankLines = 10;
 
     /*
      The gameboy contains two 32x32 tile background maps in VRAM.
@@ -47,21 +69,51 @@ namespace Video {
     const U16 UnsignedTileDataAddress = 0x8000; // up to 0x8FFF
     const U16 SignedTileDataAddress = 0x8800; // up to 0x97FF
 
-    /*
-     Only 160x144 pixels can be displayed on the screen. Registers SCROLLX and SCROLLY hold the
-     coordinates of background to be displayed in the left upper corner of the screen. Background
-     wraps around the screen (i.e. when part of it goes off the screen, it appears on the opposite
-     side.)
-     */
-    const U8 ViewportWidth = 160;
-    const U8 ViewportHeight = 144;
+    enum GPUMode {
+        HBLANK_MODE = 0,
+        VBLANK_MODE = 1,
+        OAM_READ_MODE = 2,
+        VRAM_READ_MODE = 3,
+    };
+
+    struct Tile {
+        static const U8 PixelSize = 8;
+        struct Row {
+            U8 b1;
+            U8 b2;
+            U8 unpack_pixel(U8 pixel_idx);
+        };
+        Row rows[PixelSize];
+    };
+
+    struct TileMap {
+        static const U8 TileSize = 32;
+        U8 tiles[TileSize][TileSize];
+    };
+
+    union VRAM {
+        static const unsigned TileCount = 384;
+
+        U8 memory[0x2000];
+        struct {
+            // Tile Data Table 1: Tiles 0 - 256
+            // Tile Data Table 2: Tiles 128 - 384;
+            Tile tiles[TileCount];
+            TileMap tilemaps[2];
+        };
+    };
+
+    const unsigned Tileset_TilesPerRow = 16;
+    const unsigned Tileset_TilesPerColumn = (VRAM::TileCount / Tileset_TilesPerRow);
+    const unsigned Tileset_PixelsPerRow = Tileset_TilesPerRow * Tile::PixelSize;
+    const unsigned Tileset_PixelsPerColumn = Tileset_TilesPerColumn * Tile::PixelSize;
 
     struct Sprite {
         U8 y; //Y position on the screen
         U8 x; //X position on the screen
         U8 pattern; //Pattern number 0-255 (Unlike some tile numbers, sprite pattern numbers
                     // are unsigned. LSB is ignored (treated as 0) in 8x16 mode.)
-        U8 flags; // see SpriteFlag_* above
+        U8 flags; // see SpriteFlag_*
 
         /*
          If this bit is set to 0, sprite is displayed on top of background & window.
@@ -80,35 +132,31 @@ namespace Video {
         static const U8 SpriteFlag_Palette = (1 << 4);
     };
 
-    struct TileMap {
-        static const U8 TileSize = 32;
-        U8 tiles[TileSize][TileSize];
-    };
-
-    struct Tile {
-        static const U8 PixelSize = 8;
-        struct Row {
-            U8 b1;
-            U8 b2;
-        };
-        Row rows[PixelSize];
-    };
-
-    union VRAM {
-        static const unsigned TileCount = 384;
-
-        U8 memory[0x2000];
-        struct {
-            // Tile Data Table 1: Tiles 0 - 256
-            // Tile Data Table 2: Tiles 128 - 384;
-            Tile tiles[TileCount];
-            TileMap tilemaps[2];
-        };
-    };
-
     union OAM {
         U8 memory[160];
         Video::Sprite sprites[40];
     };
 
+    struct GPU {
+        VRAM vram;
+        U8 line;
+        GPUMode mode;
+        U32 cycles_elapsed;
+        U32 frame_number;
+
+        Bitmap viewport;
+        Bitmap tileset;
+        Bitmap window;
+        Bitmap background;
+
+        GPU();
+        void step(U8 cycles);
+
+    private:
+        BOOL32 step_mode(U8 cycles);
+        void update_tileset();
+        void blit_tile(Tile* tile, Bitmap* bitmap, U16 x, U16 y);
+        void update_tilemap(Bitmap* bitmap, U8 tilemap_idx);
+        void update_viewport();
+    };
 } //namespace Video

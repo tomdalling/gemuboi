@@ -415,7 +415,7 @@ namespace HardwareRegisters {
         U8 stat;
         U8 scy;
         U8 scx;
-        U8 ly;
+        //U8 ly; this is the `line` element of the `GPU`
         U8 lyc;
         U8 dma;
         U8 bgp;
@@ -431,6 +431,15 @@ namespace HardwareRegisters {
         U8 if_;
         U8 bootstrap_rom;
         U8 ie;
+
+        BOOL32 lcdc_bit(U8 bit) {
+            U8 mask = 1 << bit;
+            return (lcdc & mask) == mask;
+        }
+
+        BOOL32 lcdc_display_enabled() { return lcdc_bit(7); }
+        BOOL32 lcdc_window_enabled() { return lcdc_bit(5); }
+        BOOL32 lcdc_background_enabled() { return lcdc_bit(0); }
     };
 
 }; // namespace HardwareRegisters

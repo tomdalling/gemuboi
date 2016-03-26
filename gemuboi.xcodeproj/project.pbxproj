@@ -7,11 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		E27C402D1BBFE1590021B05E /* SDL2.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E27C402C1BBFE1590021B05E /* SDL2.framework */; settings = {ASSET_TAGS = (); }; };
+		E27C402D1BBFE1590021B05E /* SDL2.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E27C402C1BBFE1590021B05E /* SDL2.framework */; };
 		E27C40301BBFE18E0021B05E /* SDL2.framework in Copy Frameworks */ = {isa = PBXBuildFile; fileRef = E27C402C1BBFE1590021B05E /* SDL2.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		E27C40331BBFE5210021B05E /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E27C40321BBFE5210021B05E /* main.cpp */; settings = {ASSET_TAGS = (); }; };
-		E27C403D1BBFE5460021B05E /* emulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E27C40361BBFE5460021B05E /* emulator.cpp */; settings = {ASSET_TAGS = (); }; };
-		E27C403E1BBFE5460021B05E /* timer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E27C40391BBFE5460021B05E /* timer.cpp */; settings = {ASSET_TAGS = (); }; };
+		E27C40331BBFE5210021B05E /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E27C40321BBFE5210021B05E /* main.cpp */; };
+		E27C403D1BBFE5460021B05E /* emulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E27C40361BBFE5460021B05E /* emulator.cpp */; };
+		E27C403E1BBFE5460021B05E /* timer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E27C40391BBFE5460021B05E /* timer.cpp */; };
+		E2C4B3A81CA683CC00B7E084 /* bitmap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E2C4B3A61CA683CC00B7E084 /* bitmap.cpp */; };
+		E2C4B3AB1CA68EC300B7E084 /* video.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E2C4B3A91CA68EC300B7E084 /* video.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -41,6 +43,9 @@
 		E27C403A1BBFE5460021B05E /* timer.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = timer.hpp; sourceTree = "<group>"; };
 		E27C403B1BBFE5460021B05E /* types.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = types.hpp; sourceTree = "<group>"; };
 		E27C403C1BBFE5460021B05E /* video.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = video.hpp; sourceTree = "<group>"; };
+		E2C4B3A61CA683CC00B7E084 /* bitmap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = bitmap.cpp; sourceTree = "<group>"; };
+		E2C4B3A71CA683CC00B7E084 /* bitmap.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = bitmap.hpp; sourceTree = "<group>"; };
+		E2C4B3A91CA68EC300B7E084 /* video.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = video.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -83,16 +88,19 @@
 		E27C40311BBFE5210021B05E /* source */ = {
 			isa = PBXGroup;
 			children = (
+				E2C4B3A61CA683CC00B7E084 /* bitmap.cpp */,
+				E2C4B3A71CA683CC00B7E084 /* bitmap.hpp */,
 				E27C40341BBFE5460021B05E /* cart.hpp */,
 				E27C40351BBFE5460021B05E /* cpu.hpp */,
 				E27C40361BBFE5460021B05E /* emulator.cpp */,
 				E27C40371BBFE5460021B05E /* emulator.hpp */,
 				E27C40381BBFE5460021B05E /* hardware_registers.hpp */,
+				E27C40321BBFE5210021B05E /* main.cpp */,
 				E27C40391BBFE5460021B05E /* timer.cpp */,
 				E27C403A1BBFE5460021B05E /* timer.hpp */,
 				E27C403B1BBFE5460021B05E /* types.hpp */,
+				E2C4B3A91CA68EC300B7E084 /* video.cpp */,
 				E27C403C1BBFE5460021B05E /* video.hpp */,
-				E27C40321BBFE5210021B05E /* main.cpp */,
 			);
 			path = source;
 			sourceTree = "<group>";
@@ -165,7 +173,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E2C4B3A81CA683CC00B7E084 /* bitmap.cpp in Sources */,
 				E27C403D1BBFE5460021B05E /* emulator.cpp in Sources */,
+				E2C4B3AB1CA68EC300B7E084 /* video.cpp in Sources */,
 				E27C40331BBFE5210021B05E /* main.cpp in Sources */,
 				E27C403E1BBFE5460021B05E /* timer.cpp in Sources */,
 			);
@@ -302,6 +312,7 @@
 				E27C402B1BBFE1120021B05E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

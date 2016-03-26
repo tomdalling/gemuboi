@@ -1,0 +1,173 @@
+; Setup Stack
+; WORKS
+0000: LD SP,$fffe
+
+; Zero the memory from $8000-$9FFF (VRAM)
+; WORKS
+0003: XOR A
+0004: LD HL,$9fff
+0007: LD (HL-),A
+0008: BIT 7,H
+000a: JR NZ, $0007
+
+; Setup Audio
+; WORKS (emulator doesn't do audio, but ignores this)
+000c: LD HL,$ff26
+000f: LD C,$11
+0011: LD A,$80
+0013: LD (HL-),A
+0014: LD ($FF00+C),A
+0015: INC C
+0016: LD A,$f3
+0018: LD ($FF00+C),A
+0019: LD (HL-),A
+001a: LD A,$77
+001c: LD (HL),A
+
+; Setup BG palette
+; WORKS
+001d: LD A,$fc
+001f: LD ($FF00+$47),A
+
+; Convert and load logo data from cart into Video RAM
+; WORKS
+0021: LD DE,$0104
+0024: LD HL,$8010
+0027: LD A,(DE)
+0028: CALL $0095
+002b: CALL $0096
+002e: INC DE
+002f: LD A,E
+0030: CP $34
+0032: JR NZ, $0027
+
+; Load 8 additional bytes into Video RAM
+; WORKS
+0034: LD DE,$00d8
+0037: LD B,$08
+0039: LD A,(DE)
+003a: INC DE
+003b: LD (HL+),A
+003c: INC HL
+003d: DEC B
+003e: JR NZ, $0039
+
+; Setup background tilemap
+; WORKS
+0040: LD A,$19
+0042: LD ($9910),A
+0045: LD HL,$992f
+0048: LD C,$0c
+004a: DEC A
+004b: JR Z, $0055
+004d: LD (HL-),A
+004e: DEC C
+004f: JR NZ, $004A
+0051: LD L,$0f
+0053: JR $0048
+
+; Scroll logo on screen, and play logo sound
+; (not working yet)
+0055: LD H,A            ;   Initialize scroll count, H=0
+0056: LD A,$64
+0058: LD D,A            ;   set loop count, D=$64
+0059: LD ($FF00+$42),A  ;   Set SCY to $64
+005b: LD A,$91
+005d: LD ($FF00+$40),A  ;   Set LCD to $91 (0b10010001)
+005f: INC B             ;   Set B=1
+0060: LD E,$02
+0062: LD C,$0c
+0064: LD A,($FF00+$44)  ;   wait for screen frame
+0066: CP $90
+0068: JR NZ, $0064
+006a: DEC C
+006b: JR NZ, $0064
+006d: DEC E
+006e: JR NZ, $0062
+
+    LD C,$13        ; $0070
+    INC H            ; $0072  increment scroll count
+    LD A,H        ; $0073
+    LD E,$83        ; $0074
+    CP $62        ; $0076  $62 counts in, play sound #1
+    JR Z, Addr_0080    ; $0078
+    LD E,$c1        ; $007a
+    CP $64        ; $007c
+    JR NZ, Addr_0086    ; $007e  $64 counts in, play sound #2
+Addr_0080:
+    LD A,E        ; $0080  play sound
+    LD ($FF00+C),A    ; $0081
+    INC C            ; $0082
+    LD A,$87        ; $0083
+    LD ($FF00+C),A    ; $0085
+Addr_0086:
+    LD A,($FF00+$42)    ; $0086
+    SUB B            ; $0088
+    LD ($FF00+$42),A    ; $0089  scroll logo up if B=1
+    DEC D            ; $008b  
+    JR NZ, Addr_0060    ; $008c
+
+    DEC B            ; $008e  set B=0 first time
+    JR NZ, Addr_00E0    ; $008f    ... next time, cause jump to "Nintendo Logo check"
+
+    LD D,$20        ; $0091  use scrolling loop to pause
+    JR Addr_0060    ; $0093
+
+    ; ==== Graphic routine ====
+
+    LD C,A        ; $0095  "Double up" all the bits of the graphics data
+    LD B,$04        ; $0096     and store in Video RAM
+Addr_0098:
+    PUSH BC        ; $0098
+    RL C            ; $0099
+    RLA            ; $009b
+    POP BC        ; $009c
+    RL C            ; $009d
+    RLA            ; $009f
+    DEC B            ; $00a0
+    JR NZ, Addr_0098    ; $00a1
+    LD (HL+),A        ; $00a3
+    INC HL        ; $00a4
+    LD (HL+),A        ; $00a5
+    INC HL        ; $00a6
+    RET            ; $00a7
+
+Addr_00A8:
+    ;Nintendo Logo
+    .DB $CE,$ED,$66,$66,$CC,$0D,$00,$0B,$03,$73,$00,$83,$00,$0C,$00,$0D 
+    .DB $00,$08,$11,$1F,$88,$89,$00,$0E,$DC,$CC,$6E,$E6,$DD,$DD,$D9,$99 
+    .DB $BB,$BB,$67,$63,$6E,$0E,$EC,$CC,$DD,$DC,$99,$9F,$BB,$B9,$33,$3E 
+
+Addr_00D8:
+    ;More video data
+    .DB $3C,$42,$B9,$A5,$B9,$A5,$42,$3C
+
+    ; ===== Nintendo logo comparison routine =====
+
+Addr_00E0:    
+    LD HL,$0104        ; $00e0    ; point HL to Nintendo logo in cart
+    LD DE,$00a8        ; $00e3    ; point DE to Nintendo logo in DMG rom
+
+Addr_00E6:
+    LD A,(DE)        ; $00e6
+    INC DE        ; $00e7
+    CP (HL)        ; $00e8    ;compare logo data in cart to DMG rom
+    JR NZ,$fe        ; $00e9    ;if not a match, lock up here
+    INC HL        ; $00eb
+    LD A,L        ; $00ec
+    CP $34        ; $00ed    ;do this for $30 bytes
+    JR NZ, Addr_00E6    ; $00ef
+
+    LD B,$19        ; $00f1
+    LD A,B        ; $00f3
+Addr_00F4:
+    ADD (HL)        ; $00f4
+    INC HL        ; $00f5
+    DEC B            ; $00f6
+    JR NZ, Addr_00F4    ; $00f7
+    ADD (HL)        ; $00f9
+    JR NZ,$fe        ; $00fa    ; if $19 + bytes from $0134-$014D  don't add to $00
+                        ;  ... lock up
+
+    LD A,$01        ; $00fc
+    LD ($FF00+$50),A    ; $00fe    ;turn off DMG rom

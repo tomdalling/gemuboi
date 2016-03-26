@@ -1468,22 +1468,33 @@ void randset(void* dest, size_t size) {
 }
 
 void emulator_init(Emulator* emu) {
-    memset(emu, 0, sizeof(*emu));
+    memset(emu->cartridge_ram, 0, sizeof(emu->cartridge_ram));
+    memset(emu->internal_ram, 0, sizeof(emu->internal_ram));
+    memset(&emu->hardware_registers, 0, sizeof(emu->hardware_registers));
+    memset(emu->zero_page, 0, sizeof(emu->zero_page));
+    memset(&emu->oam, 0, sizeof(emu->oam));
+    memset(&emu->registers, 0, sizeof(emu->registers));
+    memset(&emu->cart, 0, sizeof(emu->cart));
+    emu->vram_mutated = False;
 
     // put random garbage in vram
-    randset(&emu->vram, sizeof(emu->vram));
-
-    //already set to zero by memset
-    //emu->hardware_registers.bootstrap_rom = BootstrapRom_Enabled;
+    randset(&emu->gpu.vram, sizeof(emu->gpu.vram));
 }
 
 void emulator_step(Emulator* emu) {
     U8 cycles = emu_apply_next_instruction(emu);
-    cycles += 1;
+    cycles += 1; //TODO: why is this += 1? is this right?
+
+    emu->gpu.step(cycles);
+
     //TODO: update total cycles elapsed in emulator
 }
 
-U8 get_hardware_register(HardwareRegisters::Registers* hwr, U16 address) {
+
+
+U8 get_hardware_register(Emulator* emu, U16 address) {
+    HardwareRegisters::Registers* hwr = &emu->hardware_registers;
+
 #   define HW_REG_GET(REG_CAPS, REG_SMALL) \
         case HardwareRegisters::REG_CAPS: \
             return hwr->REG_SMALL;
@@ -1518,7 +1529,10 @@ U8 get_hardware_register(HardwareRegisters::Registers* hwr, U16 address) {
         HW_REG_GET(STAT, stat)
         HW_REG_GET(SCY, scy)
         HW_REG_GET(SCX, scx)
-        HW_REG_GET(LY, ly)
+
+        case HardwareRegisters::LY:
+            return emu->gpu.line;
+
         HW_REG_GET(LYC, lyc)
         HW_REG_GET(DMA, dma)
         HW_REG_GET(BGP, bgp)
@@ -1550,11 +1564,13 @@ void set_hardware_register(HardwareRegisters::Registers* hwr, U16 address, U8 va
             hwr->REG_SMALL = value; \
             return;
 
-    switch(address){
-        case HardwareRegisters::DIV:
-            hwr->div = 0;
+#   define HW_REG_ZERO(REG_CAPS, REG_SMALL) \
+        case HardwareRegisters::REG_CAPS: \
+            hwr->REG_SMALL = 0; \
             return;
 
+    switch(address){
+        HW_REG_ZERO(DIV, div)
         HW_REG_SET(TIMA, tima)
         HW_REG_SET(TMA, tma)
         HW_REG_SET(TAC, tac)
@@ -1583,7 +1599,12 @@ void set_hardware_register(HardwareRegisters::Registers* hwr, U16 address, U8 va
         HW_REG_SET(STAT, stat)
         HW_REG_SET(SCY, scy)
         HW_REG_SET(SCX, scx)
-        HW_REG_SET(LY, ly)
+
+        case HardwareRegisters::LY:
+            //TODO: is this writable? source says it's read only, but also says it zeros on write
+            //treating as read-only for now.
+            return;
+
         HW_REG_SET(LYC, lyc)
         HW_REG_SET(DMA, dma)
         HW_REG_SET(BGP, bgp)
@@ -1626,7 +1647,7 @@ U8 Emulator::mem_read(U16 address) {
 
     // 0x8000 - 0x9FFF: video RAM
     else if(address <= 0x9FFF){
-        return vram.memory[address - 0x8000];
+        return gpu.vram.memory[address - 0x8000];
     }
 
     // 0xA000 - 0xBFFF: cartrige RAM
@@ -1653,7 +1674,7 @@ U8 Emulator::mem_read(U16 address) {
     // 0xFF00 - 0xFF7F: Hardware I/O Registers
     // 0xFFFF: Interrupt Enable Flag
     else if(address <= 0xFF7F || address == 0xFFFF) {
-        return get_hardware_register(&hardware_registers, address);
+        return get_hardware_register(this, address);
     }
 
     // 0xFF80 - 0xFFFE: Zero Page
@@ -1676,7 +1697,7 @@ void Emulator::mem_write(U16 address, U8 value) {
     // 0x8000 - 0x9FFF: video RAM
     else if(address <= 0x9FFF){
         vram_mutated = True;
-        vram.memory[address - 0x8000] = value;
+        gpu.vram.memory[address - 0x8000] = value;
         return;
     }
 
