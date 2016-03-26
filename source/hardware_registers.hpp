@@ -128,30 +128,30 @@ namespace HardwareRegisters {
      LCDC - LCD Control (R/W)
 
      Bit 7 - LCD Control Operation ^
-         0: Stop completely (no picture on screen)
-         1: operation
+         0: Disabled (no picture on screen)
+         1: Enabled
      Bit 6 - Window Tile Map Display Select
-        0: $9800-$9BFF
-        1: $9C00-$9FFF
-     Bit 5 - Window Display
-        0: off
-        1: on
+        0: Use 1st tilemap (0x9800 - 0x9BFF)
+        1: Use 2nd tilemap (0x9C00 - 0x9FFF)
+     Bit 5 - Window enabled
+        0: Disabled
+        1: Enabled
      Bit 4 - BG & Window Tile Data Select
-        0: $8800-$97FF
-        1: $8000-$8FFF <- Same area as OBJ
+        0: SIGNED tile indexes (0x8800 - 0x97FF)
+        1: Unsigned tile indexes (0x8000 - 0x8FFF) <- Same area as OBJ
      Bit 3 - BG Tile Map Display Select
-        0: $9800-$9BFF
-        1: $9C00-$9FFF
+        0: Use 1st tilemap (0x9800 - 0x9BFF)
+        1: Use 2nd tilemap (0x9C00 - 0x9FFF)
      Bit 2 - OBJ (Sprite) Size
-        0: 8*8
-        1: 8*16 (width*height)
+        0: 8x8
+        1: 8x16 (width x height)
      Bit 1 - OBJ (Sprite) Display
-        0: off
-        1: on
-     Bit 0 - BG & Window Display
-        0: off
-        1: on
-     
+        0: Disabled
+        1: Enabled
+     Bit 0 - Background enabled
+        0: Disabled
+        1: Enabled
+
      Stopping LCD operation (bit 7 from 1 to 0) must be performed during V-blank to work properly.
      V- blank can be confirmed when the value of LY is greater than or equal to 144.
 
@@ -437,9 +437,14 @@ namespace HardwareRegisters {
             return (lcdc & mask) == mask;
         }
 
-        BOOL32 lcdc_display_enabled() { return lcdc_bit(7); }
-        BOOL32 lcdc_window_enabled() { return lcdc_bit(5); }
-        BOOL32 lcdc_background_enabled() { return lcdc_bit(0); }
+        BOOL32   lcdc_display_enabled() { return lcdc_bit(7); }
+        unsigned lcdc_window_tilemap_index()  { return lcdc_bit(6) ? 1 : 0; }
+        BOOL32   lcdc_window_enabled() { return lcdc_bit(5); }
+        BOOL32   lcdc_tile_indexes_are_signed() { return lcdc_bit(4); }
+        unsigned lcdc_background_tilemap_index() { return lcdc_bit(3) ? 1 : 0; }
+        BOOL32   lcdc_sprites_8x16() { return lcdc_bit(2); }
+        BOOL32   lcdc_sprites_enabled() { return lcdc_bit(1); }
+        BOOL32   lcdc_background_enabled() { return lcdc_bit(0); }
     };
 
 }; // namespace HardwareRegisters
